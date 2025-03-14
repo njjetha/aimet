@@ -37,8 +37,61 @@
 # pylint: disable=missing-module-docstring
 
 from aimet_common.connected_graph.operation import Op
-from typing import List, Tuple
+from aimet_onnx.meta.product import Product
+from aimet_onnx.utils import ParamUtils, ModelProto
 
+from onnx import numpy_helper
+import numpy as np
+from typing import List, Tuple, Optional, Union
+
+
+def _get_numpy_array(model: ModelProto, param_name: str) -> Optional[np.ndarray]:
+    """
+    returns param value as a numpy array from model if present, otherwise None.
+
+    Args:
+        model (ModelProto): source Model 
+        param_name (str): parameter name to fetch value for
+
+    Returns:
+        Optional[nd.array]: returns nd.array if parameter exists. Otherwise, None.
+    """
+    return numpy_helper.to_array(ParamUtils.get_param_by_name(model, param_name))
+
+def is_constant_scalar(model: ModelProto, op_input: Product, expected_value: Union[int | float]) -> bool:
+    """
+    Returns True if provided input is constant with scalar value equal to expected value.
+
+    Args:
+        model (ModelProto): source Model
+        op_input (Product): input to check for constant value for
+        expected_value (Union[int | float]): expected value
+
+    Returns:
+        bool: returns True if op_input is constant with same scalar value.
+    """
+    if not op_input.is_const:
+        return False
+
+    value = _get_numpy_array(model, op_input.name)
+    return value.ndim == 0 and value == expected_value
+
+def match_pow_2_pattern(op: Op, model: ModelProto) -> bool:
+    """
+    Check if Op is equivalent to pow(x, 2)
+
+    Args:
+        op (Op): Op to check for
+        model (ModelProto): source model
+
+    Returns:
+        bool: Return True if Op is either pow(x, 2) or mul(x, x)
+    """
+    if op.type == "Mul":
+        return op.inputs[0] == op.inputs[1]
+    if op.type == "Pow":
+        return is_constant_scalar(model, op.inputs[1], 2)
+    return False
 
 def match_and_get_next_op(op: Op, op_type: str) -> Op:
     """
