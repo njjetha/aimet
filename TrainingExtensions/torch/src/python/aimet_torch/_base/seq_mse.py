@@ -94,6 +94,21 @@ class SeqMseParams:
     loss_fn: str = 'mse'
     forward_fn: Callable = default_forward_fn
 
+    def __post_init__(self):
+        # pylint: disable=attribute-defined-outside-init
+        if self.loss_fn == "mse":
+            self._loss_fn = functional.mse_loss
+        elif self.loss_fn == "l1":
+            self._loss_fn = functional.l1_loss
+        elif self.loss_fn == "sqnr":
+            self._loss_fn = neg_sqnr
+        else:
+            raise ValueError(f"Invalid loss function: {self.loss_fn}")
+
+    def get_loss_fn(self) -> Callable:
+        """ Returns loss function """
+        return self._loss_fn
+
 
 class SequentialMseBase(ABC):
     """
@@ -400,15 +415,7 @@ class SequentialMseBase(ABC):
         :param params: Sequential MSE parameters
         :return: loss
         """
-        if params.loss_fn == "mse":
-            loss_fn = functional.mse_loss
-        elif params.loss_fn == "l1":
-            loss_fn = functional.l1_loss
-        elif params.loss_fn == "sqnr":
-            loss_fn = neg_sqnr
-        else:
-            raise ValueError(f"Invalid loss function: {params.loss_fn}")
-
+        loss_fn = params.get_loss_fn()
         channel_dim = xqwq.shape[-1]
         xqwq = xqwq.reshape(-1, channel_dim)
         xw = xw.reshape(-1, channel_dim)
