@@ -904,7 +904,8 @@ class QuantizationSimModel:
         self.remove_quantization_nodes()
         if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
             # Note: Saving as external data mutates the saved model, removing all initializer data
-            save_model_with_external_weights(self.model.model, os.path.join(path, filename_prefix) + '.onnx')
+            save_model_with_external_weights(self.model.model, os.path.join(path, filename_prefix) + '.onnx',
+                                             location=filename_prefix + ".data", all_tensors_to_one_file=True)
         else:
             self.model.save_model_to_file(os.path.join(path, filename_prefix) + '.onnx')
 
