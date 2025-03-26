@@ -48,14 +48,18 @@ from aimet_torch._base.adaround.activation_sampler import get_block_inputs, get_
 
 from .decoder_processor import get_transformer_processor
 from .omniquant_config import OmniquantConfig
+from .let_modules import LETModule
+from ._utils import _convert_sim_to_letsim, _convert_letsim_to_sim
+
+OMNIQUANT_ARTIFACT_DIR = "./aimet_omniquant_artifact/"
 
 class Omniquant:
     """
-    Omniqunat for Post Training Quantization (PTQ)
+    Omniquant for Post Training Quantization (PTQ)
     """
     @classmethod
     def apply_omniquant(cls, quant_sim: QuantizationSimModel, model: torch.nn.Module, omniquant_config: OmniquantConfig, dataloader,
-                        output_path: str) -> torch.nn.Module:
+                        output_path: str = OMNIQUANT_ARTIFACT_DIR) -> torch.nn.Module:
         """
         Returns model with with omniquant weight, and save model with new weightsto output_path.
 
@@ -63,7 +67,7 @@ class Omniquant:
         :param model: Original fp32 model from which quant_sim was created.
         :param omniquant_config: Configuration for Omniquant optimization.
         :param dataloader: Dataloader used to train model.
-        :param output_path: path where to store artifacts.
+        :param output_path: Path to save {layer_name: scale} metadata safetensor.
         :return: Model with Omniquant weights.
         """
         @contextlib.contextmanager
@@ -76,7 +80,10 @@ class Omniquant:
             finally:
                 quant_sim.model.config.use_cache, model.config.use_cache = quant_sim_use_cache_bool, model_use_cache_bool
 
+        os.makedirs(output_path, exist_ok=True)
+
         cls.validate_omniquant_config(omniquant_config)
+        _convert_sim_to_letsim(quant_sim)
         with disable_dynamic_cache():
             quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
 
@@ -124,13 +131,18 @@ class Omniquant:
 
             for block_num, (fp_block, qt_block) in enumerate(zip(fp_transformer_block_list, qt_transformer_block_list)):
                 qt_let_pair_list = transformer_processor.get_let_module_pair(qt_block)
+                transformer_processor.init_let_params(qt_let_pair_list)
 
                 for epoch in range(omniquant_config.num_epoch):
                     for batch_num in range(omniquant_config.num_batch):
                         fp_input, qt_input = cached_fp_dataset[batch_num], cached_qt_dataset[batch_num]
-
                         # Do block-wise training.
                         cls._block_wise_training(omniquant_config, fp_input, qt_input, fp_block, qt_block, qt_let_pair_list)
+
+                # fold_let_params
+                for module in model.modules():
+                    if isinstance(module, LETModule):
+                        module.fold_let_params()
 
                 get_block_outputs(
                         fp_block, qt_block, False, cached_fp_dataset, cached_qt_dataset, omniquant_config.cache_on_cpu,
@@ -138,9 +150,14 @@ class Omniquant:
                     )
 
         # pylint: disable=protected-access
+        # pylint: disable=unnecessary-comprehension
+        with torch.no_grad():
+            _convert_letsim_to_sim(quant_sim)
+
         # QDQ on models to fold quantizations into weight params.
         quant_sim._apply_qdq_to_model_parameters(quant_sim.model)
-        # pylint: disable=unnecessary-comprehension
+
+        # quantized module -> original module
         all_modules_in_original_model = [module for module in quant_sim.model.modules()]
         quant_sim._remove_quantization_wrappers(quant_sim.model, all_modules_in_original_model)
 
@@ -162,7 +179,7 @@ class Omniquant:
         let_param = []
         for _pair in qt_let_pair_list:
             for q_module in _pair.prev + _pair.follow:
-                let_param.extend([_v for _v in q_module.get_let_param().values() if isinstance(_v, nn.Parameter)])
+                let_param.extend([_v for _v in q_module.get_let_params().values() if isinstance(_v, nn.Parameter)])
 
         grouped_params = [
                 {"params": let_param, "lr": omniquant_config.let_lr, "weight_decay":  0.},
