@@ -44,10 +44,11 @@ Layer groups: Groups of layers that are immediately connected and can be decompo
 # pylint: disable=too-many-lines
 
 from typing import Tuple, List, Union, Dict
+import warnings
 import numpy as np
 import torch
 
-from aimet_common.utils import AimetLogger
+from aimet_common.utils import AimetLogger, _red
 from aimet_common.cross_layer_equalization import ClsLayerType, ClsSetInfo, ClsImpl, HbfImpl
 from aimet_torch import utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph
@@ -683,6 +684,23 @@ class PythonHbfImpl(HbfImpl):
             cls_pair_info.layer2.bias.copy_(torch.from_numpy(_bias_curr_layer).reshape_as(cls_pair_info.layer2.bias)).to(
                 device=cls_pair_info.layer2.bias.device, dtype=cls_pair_info.layer2.bias.dtype)
 
+
+def _warn_relu6(model: torch.nn.Module):
+    if not any(isinstance(module, torch.nn.ReLU6) for module in model.modules()):
+        return
+
+    msg = " ".join([
+        "Cross Layer Scaling (CLS) technique works for combination of conv-conv or conv-relu-conv layers.",
+        "Specifically, CLS does not work for combination of conv-relu6-conv layers.",
+        "For aimet-torch<2.3, AIMET was force changing relu6 layers to relu in the model."
+        "Since aimet-torch==2.3, AIMET will no longer do this."
+        "As a result, combination of conv-relu6-conv layers won't be scaled."
+        "User can modify their model to change relu6 to relu before invoking AIMET,"
+        "if this transformation does not impact floating point accuracy of the model."
+    ])
+    warnings.warn(_red(msg), DeprecationWarning, stacklevel=3)
+
+
 def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple]] = None,
                    dummy_input: Union[torch.Tensor, Tuple] = None):
     """
@@ -693,6 +711,8 @@ def equalize_model(model: torch.nn.Module, input_shapes: Union[Tuple, List[Tuple
     :param dummy_input: A dummy input to the model. Can be a Tensor or a Tuple of Tensors. dummy_input will be
      placed on CPU if not already.
     """
+    _warn_relu6(model)
+
     if isinstance(model, torch.nn.DataParallel):
         equalize_model(model.module, input_shapes, dummy_input)
     else:
@@ -727,6 +747,8 @@ def equalize_bn_folded_model(model: torch.nn.Module,
      placed on CPU if not already.
     :param folded_pairs: List of pairs of folded layers
     """
+    _warn_relu6(model)
+
     if isinstance(model, torch.nn.DataParallel):
         equalize_bn_folded_model(model.module, input_shapes, folded_pairs, dummy_input=dummy_input)
     else:
@@ -735,11 +757,6 @@ def equalize_bn_folded_model(model: torch.nn.Module,
             bn_dict[conv_bn[0]] = conv_bn[1]
 
         with place_model(model, torch.device('cpu')):
-            # replace any ReLU6 layers with ReLU
-            utils.replace_modules(model,
-                                  lambda module: isinstance(module, torch.nn.ReLU6),
-                                  lambda _: torch.nn.ReLU())
-
             # perform cross-layer scaling on applicable layer sets
             cls_set_info_list = CrossLayerScaling.scale_model(model, input_shapes, dummy_input=dummy_input)
 
