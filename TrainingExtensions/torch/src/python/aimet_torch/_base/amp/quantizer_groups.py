@@ -331,7 +331,7 @@ def get_input_and_param_quantizers(
     return tuple(input_quantizers), tuple(parameter_quantizers)
 
 
-# pylint: disable=too-many-branches, too-many-locals
+# pylint: disable=too-many-branches, too-many-locals, too-many-statements
 def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, List[QuantizerGroup]]:
     """
     Finds quantizer groups in a quantization sim model
@@ -359,13 +359,31 @@ def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, Lis
                 supported_kernel_ops = []
                 if child_module_name is not None:
                     supported_kernel_ops.append(child_module_name)
-                quantizer_group = QuantizerGroup(
-                    input_quantizers=input_quantizers,
-                    parameter_quantizers=parameter_quantizers,
-                    supported_kernel_ops=tuple(supported_kernel_ops)
-                )
-                quantizer_groups.append(quantizer_group)
-                logger.debug('\n Quantizer Group Added: %s', quantizer_group)
+
+                if parameter_quantizers:
+                    if len(input_quantizers) > 1:
+                        # Unexpected case of having multiple inputs with a parameter. Leave these out of quantizer group selection.
+                        debug_str = (f'Skipping unsupported case of multiple inputs with params detected for input op '
+                                     f'{child}.')
+                        logger.debug(debug_str)
+                        continue
+                    quantizer_group = QuantizerGroup(
+                        input_quantizers=input_quantizers,
+                        parameter_quantizers=parameter_quantizers,
+                        supported_kernel_ops=tuple(supported_kernel_ops)
+                    )
+                    quantizer_groups.append(quantizer_group)
+                    logger.debug('\n Quantizer Group Added: %s', quantizer_group)
+                else:
+                    # Create a quantizer group for each input_quantizer
+                    for input_quantizer in input_quantizers:
+                        quantizer_group = QuantizerGroup(
+                            input_quantizers=(input_quantizer,),
+                            parameter_quantizers=(),
+                            supported_kernel_ops=tuple(supported_kernel_ops)
+                        )
+                        quantizer_groups.append(quantizer_group)
+                        logger.debug('\n Quantizer Group Added: %s', quantizer_group)
 
     # Based on which quantizers are enabled, create a list of quantizer_groups
     for parents, children in parent_child_op_groups.items():
@@ -394,14 +412,41 @@ def find_quantizer_group(sim: _QuantizationSimModelInterface) -> Tuple[Dict, Lis
 
         # Don't add quantizer group if it is empty
         if input_quantizers or output_quantizers or parameter_quantizers:
-            quantizer_group = QuantizerGroup(
-                input_quantizers=input_quantizers,
-                output_quantizers=output_quantizers,
-                parameter_quantizers=parameter_quantizers,
-                supported_kernel_ops=tuple(supported_kernel_ops)
-            )
-            quantizer_groups.append(quantizer_group)
-            logger.debug('\n Quantizer Group added: %s', quantizer_group)
+            if parameter_quantizers:
+                if len(input_quantizers) + len(output_quantizers) > 1:
+                    # Unexpected case of having multiple inputs with a parameter. Leave these out of quantizer group selection.
+                    debug_str = (f'Skipping unsupported case of multiple inputs with params detected for parents '
+                                 f'{parents} and children {children}.')
+                    logger.debug(debug_str)
+                    continue
+                quantizer_group = QuantizerGroup(
+                    input_quantizers=input_quantizers,
+                    output_quantizers=output_quantizers,
+                    parameter_quantizers=parameter_quantizers,
+                    supported_kernel_ops=tuple(supported_kernel_ops)
+                )
+                quantizer_groups.append(quantizer_group)
+                logger.debug('\n Quantizer Group added: %s', quantizer_group)
+            else:
+                # Create a quantizer group for each input and output quantizer
+                for quantizer in input_quantizers:
+                    quantizer_group = QuantizerGroup(
+                        input_quantizers=(quantizer,),
+                        output_quantizers=(),
+                        parameter_quantizers=(),
+                        supported_kernel_ops=tuple(supported_kernel_ops)
+                    )
+                    quantizer_groups.append(quantizer_group)
+                    logger.debug('\n Quantizer Group added: %s', quantizer_group)
+                for quantizer in output_quantizers:
+                    quantizer_group = QuantizerGroup(
+                        input_quantizers=(),
+                        output_quantizers=(quantizer,),
+                        parameter_quantizers=(),
+                        supported_kernel_ops=tuple(supported_kernel_ops)
+                    )
+                    quantizer_groups.append(quantizer_group)
+                    logger.debug('\n Quantizer Group added: %s', quantizer_group)
 
     if 'output_ops' in parent_child_op_groups:
         for parent in parent_child_op_groups['output_ops']:
