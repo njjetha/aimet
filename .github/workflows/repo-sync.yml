@@ -1,4 +1,4 @@
-name: Forward AIMET commits to public repo (Test)
+name: Forward AIMET commits to public repo
 
 on:
   push:
@@ -11,8 +11,7 @@ jobs:
     env:
       INTERNAL_REPO_DIR: "aimet-repo"
       INTERNAL_SRC_BRANCH: "develop"
-      # TODO: rename to develop when we start one-way push
-      PUBLIC_DST_BRANCH: "dev/bhushans/test-sync"
+      PUBLIC_DST_BRANCH: "develop"
     steps:
       - name: Checkout internal repo
         uses: actions/checkout@v4
