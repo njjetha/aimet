@@ -942,12 +942,13 @@ class QuantizationSimModel:
             bias_qtzr.load_encodings(encodings)
             bias_qtzr.enabled = True
 
-    def export(self, path: str, filename_prefix: str):
+    def export(self, path: str, filename_prefix: str, export_model: bool = True):
         """
         Compute encodings and export to files
 
         :param path: dir to save encoding files
         :param filename_prefix: filename to save encoding files
+        :param export_model: If True, then ONNX model is exported. When False, only encodings are exported.
         """
         if quantsim.encoding_version == '0.6.1':
             msg = _red("Encoding version 0.6.1 was deprecated in favor of 1.0.0 since aimet-onnx==2.1. "
@@ -955,13 +956,15 @@ class QuantizationSimModel:
                        "updated to be able to parse 1.0.0 format")
             warnings.warn(msg, DeprecationWarning, stacklevel=2)
         self._export_encodings(os.path.join(path, filename_prefix) + '.encodings')
-        self.remove_quantization_nodes()
-        if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
-            # Note: Saving as external data mutates the saved model, removing all initializer data
-            save_model_with_external_weights(self.model.model, os.path.join(path, filename_prefix) + '.onnx',
-                                             location=filename_prefix + ".data", all_tensors_to_one_file=True)
-        else:
-            self.model.save_model_to_file(os.path.join(path, filename_prefix) + '.onnx')
+
+        if export_model:
+            self.remove_quantization_nodes()
+            if self.model.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF:
+                # Note: Saving as external data mutates the saved model, removing all initializer data
+                save_model_with_external_weights(self.model.model, os.path.join(path, filename_prefix) + '.onnx',
+                                                location=filename_prefix + ".data", all_tensors_to_one_file=True)
+            else:
+                self.model.save_model_to_file(os.path.join(path, filename_prefix) + '.onnx')
 
     def set_and_freeze_param_encodings(self, encoding_path: str):
         """

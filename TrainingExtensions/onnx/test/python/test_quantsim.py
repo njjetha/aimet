@@ -245,7 +245,8 @@ class TestQuantSim:
             assert quantizer_args["dtype"] == "int"
             assert "is_symmetric" in quantizer_args
 
-    def test_export_model(self):
+    @pytest.mark.parametrize("export_model", (True, False))
+    def test_export_model(self, export_model):
         """Test to export encodings and model"""
         model = build_dummy_model()
         with tempfile.TemporaryDirectory() as tempdir:
@@ -258,7 +259,9 @@ class TestQuantSim:
                 session.run(None, make_dummy_input(model))
 
             sim.compute_encodings(dummy_callback, None)
-            sim.export(tempdir, 'quant_sim_model')
+            sim.export(tempdir, 'quant_sim_model', export_model=export_model)
+
+            assert os.path.exists(os.path.join(tempdir, "quant_sim_model.onnx")) == export_model
 
             with open(os.path.join(tempdir, 'quant_sim_model.encodings'), 'rb') as json_file:
                 encoding_data = json.load(json_file)
