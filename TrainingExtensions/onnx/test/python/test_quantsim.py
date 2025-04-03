@@ -46,7 +46,6 @@ import functools
 
 import onnx.numpy_helper
 import torch
-import torchvision
 import numpy as np
 from onnx import load_model
 import onnx
@@ -2225,6 +2224,7 @@ def test_bias_export(model_factory, input_shape, block_size, lpbq, tmp_path):
         assert np.allclose(bias_scale, expected_bias_scale)
 
 
+@pytest.mark.parametrize("enable_graph_output_quantizer", [True, False])
 @pytest.mark.parametrize("export_int32_bias_encodings", [False, True])
 @pytest.mark.parametrize(
     "model_factory,                                   input_shape", [
@@ -2235,7 +2235,10 @@ def test_bias_export(model_factory, input_shape, block_size, lpbq, tmp_path):
     (lambda: instance_norm_model(opset_version=13),   (2, 10, 24, 24)),
     (layernorm_model,                                 (1, 4, 64, 64)),
 ])
-def test_onnx_qdq(model_factory, input_shape, export_int32_bias_encodings):
+def test_onnx_qdq(model_factory,
+                  input_shape: tuple[int, ...],
+                  export_int32_bias_encodings: bool,
+                  enable_graph_output_quantizer: bool):
     model = model_factory()
     sim = QuantizationSimModel(model)
     input = np.random.randn(*input_shape).astype(np.float32)
@@ -2249,16 +2252,18 @@ def test_onnx_qdq(model_factory, input_shape, export_int32_bias_encodings):
     if export_int32_bias_encodings:
         sim._concretize_int32_bias_quantizers()
 
+    # Tolerate off-by-three error.
+    # Off-by-N error can occur due to slight numerical differences between
+    # AIMET QcQuantizOp and onnx::QuantizeLinear/DequantizeLinear
+    atol = 3 * sim.qc_quantize_op_dict["output"].get_encodings()[0].delta
+
+    sim.qc_quantize_op_dict["output"].enabled = enable_graph_output_quantizer
+
     out_sim, = sim.session.run(None, {"input": input})
 
     onnx_qdq_model = sim._to_onnx_qdq()
     sess = ort.InferenceSession(onnx_qdq_model.SerializeToString(), providers=['CPUExecutionProvider'])
     out_onnx_qdq, = sess.run(None, {"input": input})
-
-    # Tolerate off-by-three error.
-    # Off-by-N error can occur due to slight numerical differences between
-    # AIMET QcQuantizOp and onnx::QuantizeLinear/DequantizeLinear
-    atol = 3 * sim.qc_quantize_op_dict["output"].get_encodings()[0].delta
 
     if export_int32_bias_encodings:
         pytest.skip(

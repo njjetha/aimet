@@ -1117,14 +1117,13 @@ class QuantizationSimModel:
         ]
 
         for aimet_node in aimet_qc_quantize_nodes:
-            model_copy.graph.node.remove(aimet_node)
-
             qtzr = self.qc_quantize_op_dict[aimet_node.input[0]]
             encodings = qtzr._export_2_0_0_encodings() # pylint: disable=protected-access
 
             if encodings:
                 # Affine quantizer
                 # Replace QcQuantizeOp with onnx::QuantizeLinear and DequantizeLinear
+                model_copy.graph.node.remove(aimet_node)
                 _add_onnx_qdq_node(model_copy,
                                    input_name=aimet_node.input[0],
                                    output_name=aimet_node.output[0],
@@ -1136,10 +1135,7 @@ class QuantizationSimModel:
                 # but we should perform extra graph surgery to relay
                 # the producer of QcQuantizerOp's input and
                 # the consumer of QcQuantizerOp's output
-                for node in model_copy.graph.node:
-                    for i, _ in enumerate(node.input):
-                        if node.input[i] == aimet_node.output[0]:
-                            node.input[i] = aimet_node.input[0]
+                utils.remove_node(aimet_node, model_copy.graph)
 
         # TODO: Unfortunately, this sanity check doesn't pass yet because the
         #       QcQuantizeOp nodes inserted during QuantizationSimModel.__init__
