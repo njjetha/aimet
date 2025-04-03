@@ -119,6 +119,28 @@ class _NOT_SPECIFIED:
     pass
 
 
+@contextlib.contextmanager
+def compute_encodings(sim: "QuantizationSimModel"):
+    """
+    Computes encodings for all quantizers in the model.
+    """
+    for op_name, qc_op in sim.qc_quantize_op_dict.items():
+        qc_op.reset_encoding_stats()
+        if op_name in sim.activation_names:
+            qc_op.op_mode = OpMode.updateStats
+        else:
+            qc_op.op_mode = OpMode.oneShotQuantizeDequantize
+            if qc_op.is_encoding_frozen():
+                qc_op.op_mode = OpMode.quantizeDequantize
+
+    yield
+
+    for op_name, qc_op in sim.qc_quantize_op_dict.items():
+        if qc_op.data_type == QuantizationDataType.int and not qc_op.is_encoding_frozen():
+            qc_op.compute_encodings()
+        qc_op.op_mode = OpMode.quantizeDequantize
+
+
 # pylint: disable=missing-class-docstring, too-many-arguments, too-many-locals, too-many-instance-attributes
 class QuantizationSimModel:
     __doc__ = f"""
@@ -705,21 +727,8 @@ class QuantizationSimModel:
         else:
             args = (self.session, forward_pass_callback_args)
 
-        for op_name, qc_op in self.qc_quantize_op_dict.items():
-            qc_op.reset_encoding_stats()
-            if op_name in self.activation_names:
-                qc_op.op_mode = OpMode.updateStats
-            else:
-                qc_op.op_mode = OpMode.oneShotQuantizeDequantize
-                if qc_op.is_encoding_frozen():
-                    qc_op.op_mode = OpMode.quantizeDequantize
-
-        forward_pass_callback(*args)
-
-        for op_name, qc_op in self.qc_quantize_op_dict.items():
-            if qc_op.data_type == QuantizationDataType.int and not qc_op.is_encoding_frozen():
-                qc_op.compute_encodings()
-            qc_op.op_mode = OpMode.quantizeDequantize
+        with compute_encodings(self):
+            forward_pass_callback(*args)
 
     def _get_encodings(self, quantizer_names, enc_version):
         encoding_dict = {}
