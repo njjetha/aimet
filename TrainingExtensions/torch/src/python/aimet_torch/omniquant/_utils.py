@@ -82,7 +82,6 @@ def _convert_sim_to_letsim(sim):
             leaf_module_name = name.split(".")[-1]
             setattr(sim.model.get_submodule(parent_module), leaf_module_name, let_module)
 
-
 def _convert_letsim_to_sim(sim):
     """ Convert LET sim to original sim model inplace. """
     for name, module in sim.model.named_modules():

@@ -37,10 +37,17 @@
 # =============================================================================
 """ Test Omniquant functions. (Not include LET modules.) """
 import contextlib
+import copy
+import os
+from safetensors.numpy import save_file
+import tempfile
 import torch
+from peft import LoraConfig, get_peft_model, get_peft_model_state_dict, set_peft_model_state_dict
+from peft.tuners.lora.layer import Linear as LoraLinear
 import pytest
 
 from aimet_torch.omniquant import decoder_processor
+from aimet_torch.omniquant import omniquant_optimizer
 
 @contextlib.contextmanager
 def add_custom_model_class_to_support_model_group(model_class, target_group_name):
@@ -61,10 +68,12 @@ class FakeLlamaModel(torch.nn.Module):
         super().__init__()
         assert emb_dim % head_num == 0, "emb_dim need to be dividable by head_num."
         self.layers = torch.nn.ModuleList([FakeDecoderBlcok(seq_len, head_num, emb_dim) for _ in range(layer_num)])
+        self.out_linear = torch.nn.Linear(emb_dim, 5)
 
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
+        x = self.out_linear(x)
         return x
 
 class FakeDecoderBlcok(torch.nn.Module):
@@ -118,9 +127,9 @@ class FakeMlp(torch.nn.Module):
         return y0 + y1
 
 class TestOmniquant:
+    """ Test Omniquant. """
     def test_get_transformer_processor(self):
         """ Test get_transformer_processor returns correct TransformerProcessor and raise error. """
-
         layer_num = 5
         seq_len = 20
         head_num = 5
@@ -144,3 +153,85 @@ class TestOmniquant:
 
         with pytest.raises(ValueError):
             decoder_processor.get_transformer_processor(fake_llama_model)
+
+    def test_load_lora_model(self):
+        """ Test omniquant_optimizer.update_lora_weights """
+        layer_num = 2
+        seq_len = 20
+        head_num = 5
+        emb_dim = 10
+        dummy_input = torch.randn(1, seq_len, emb_dim)
+        let_model = FakeLlamaModel(layer_num, seq_len, head_num, emb_dim)
+        ori_model = copy.deepcopy(let_model)
+
+        input_layernorm_scale = torch.nn.Parameter(torch.randn(emb_dim))
+        mlp_scale = torch.nn.Parameter(torch.randn(emb_dim))
+        input_layernorm_scale_2 = torch.nn.Parameter(torch.randn(emb_dim))
+        mlp_scale_2 = torch.nn.Parameter(torch.randn(emb_dim))
+        meta_data = {
+            "layers.0.input_layernorm.prev": input_layernorm_scale,
+            "layers.0.self_attn.q_proj.foll": input_layernorm_scale,
+            "layers.0.self_attn.k_proj.foll": input_layernorm_scale,
+            "layers.0.self_attn.v_proj.foll": input_layernorm_scale,
+            "layers.0.mlp.up_proj.prev": mlp_scale,
+            "layers.0.mlp.down_proj.foll": mlp_scale,
+            "layers.1.input_layernorm.prev": input_layernorm_scale_2,
+            "layers.1.self_attn.q_proj.foll": input_layernorm_scale_2,
+            "layers.1.self_attn.k_proj.foll": input_layernorm_scale_2,
+            "layers.1.self_attn.v_proj.foll": input_layernorm_scale_2,
+            "layers.1.mlp.up_proj.prev": mlp_scale_2,
+            "layers.1.mlp.down_proj.foll": mlp_scale_2,
+        }
+
+        # Apply meta data to let_model
+        with torch.no_grad():
+            for layer_name, scale in meta_data.items():
+                module = let_model.get_submodule(layer_name[:-5])
+                if layer_name.endswith("prev"):
+                    if module.bias is not None:
+                        module.bias.copy_(module.bias / scale)
+                    new_weight = module.weight / (scale.reshape(-1, 1) if isinstance(module, torch.nn.Linear) else scale)
+                    module.weight.copy_(new_weight)
+
+                elif layer_name.endswith("foll"):
+                    module.weight.copy_(module.weight* scale.reshape(1, -1))
+
+        let_output = let_model(dummy_input)
+        ori_output = ori_model(dummy_input)
+        assert torch.allclose(let_output, ori_output, atol=1e-5)
+
+        # Set model to lora model
+        lora_config = LoraConfig(
+            lora_alpha=16,
+            lora_dropout=0.1,
+            r=2,
+            bias="none",
+            target_modules = ["q_proj", "v_proj", "up_proj", "down_proj"]
+        )
+        peft_ori_model = get_peft_model(ori_model, lora_config)
+        peft_let_model = get_peft_model(let_model, lora_config)
+        peft_ori_model.eval() # .eval() to disable lora dropout.
+        peft_let_model.eval() # .eval() to disable lora dropout.
+
+        # Lora B default init to zero weight.
+        # Init lora B weight to random weight.
+        with torch.no_grad():
+            for _, module in peft_ori_model.named_modules():
+                if isinstance(module, LoraLinear):
+                    for _, _lora_b in module.lora_B.items():
+                        _lora_b.weight = torch.nn.Parameter(torch.randn(_lora_b.weight.shape))
+        # Copy peft weight to let peft model.
+        set_peft_model_state_dict(peft_let_model, get_peft_model_state_dict(peft_ori_model))
+
+        # Run omniquant_optimizer.update_lora_weights
+        with tempfile.TemporaryDirectory() as tempdir:
+            metadata_path = os.path.join(tempdir, "./metadata.safetensor")
+            save_file({k: v.data.numpy() for k, v in meta_data.items()}, metadata_path)
+            omniquant_optimizer.update_lora_weights(peft_let_model, metadata_path)
+
+        peft_let_output = peft_let_model(dummy_input)
+        peft_ori_output = peft_ori_model(dummy_input)
+
+        # peft model output should be different from base model output.
+        assert not torch.allclose(let_output, peft_let_output, atol=1e-5)
+        assert torch.allclose(peft_let_output, peft_ori_output, atol=1e-5)

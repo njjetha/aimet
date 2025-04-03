@@ -39,10 +39,13 @@
 import contextlib
 import os
 from pathlib import Path
-from safetensors.numpy import save_file
+from peft.tuners.lora.layer import Linear as LoraLinear
+from peft.peft_model import PeftModel
+from safetensors.numpy import save_file, load_file
 import tempfile
 import torch
 from torch import nn
+from typing import Union
 
 from aimet_torch._base.quantsim import logger
 from aimet_torch.utils import CachedDataset
@@ -65,7 +68,8 @@ class Omniquant:
     def apply_omniquant(cls, quant_sim: QuantizationSimModel, model: torch.nn.Module, omniquant_config: OmniquantConfig, dataloader,
                         output_path: str = OMNIQUANT_ARTIFACT_DIR) -> torch.nn.Module:
         """
-        Returns model with with omniquant weight, and save model with new weightsto output_path.
+        Returns model with with omniquant weight, and save metadata in safetensor format to output path. Metadata safetensor
+        can be used in update_lora_weights to update lora adaptor weights for peft lora model.
 
         :param quant_sim: QuantizationSimModel object to optimize with Omniquant.
         :param model: Original fp32 model from which quant_sim was created.
@@ -86,7 +90,7 @@ class Omniquant:
         output_path = Path(output_path)
         os.makedirs(output_path, exist_ok=True)
 
-        cls.validate_omniquant_config(omniquant_config)
+        cls._validate_omniquant_config(omniquant_config)
         _convert_sim_to_letsim(quant_sim)
         with disable_dynamic_cache():
             quant_sim.model = cls._apply_omniquant(quant_sim, model, omniquant_config, dataloader, output_path)
@@ -216,7 +220,7 @@ class Omniquant:
         optimizer.zero_grad()
 
     @classmethod
-    def validate_omniquant_config(cls, omniquant_config):
+    def _validate_omniquant_config(cls, omniquant_config: OmniquantConfig):
         """ Validate omniquant config """
         # input_symmetry should be one of qtqt, qtfp, fpqt, fpfp
         input_symmetry_error_msg = f"Expect omniquant_config.input_symmetry be one of qtqt, qtfp, fpqt, fpfp but got {omniquant_config.input_symmetry}."
@@ -237,3 +241,50 @@ class Omniquant:
 
         save_file(meta_data, output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME)
         logger.info("Aimet omniquant metadata saved at %s", (output_path/OMNIQUANT_METADATA_SAFETENSOR_NAME).absolute())
+
+def _get_meta_dict(meta_data):
+    """ Process meta_data to {module_name: {"foll"/"prev": scale}} dict. """
+    meta_data_dict = {}
+    def _get_name_suf(key):
+        """ split module name and foll/prev suffix """
+        split_key = key.split(".")
+        return ".".join(split_key[:-1]), split_key[-1]
+
+    for key, scale in meta_data.items():
+        let_module_name, prev_foll = _get_name_suf(key)
+        assert prev_foll in ("foll", "prev"), f"Expect metadata suffix = foll or prev, but got {prev_foll}"
+        meta_data_dict[let_module_name] = {prev_foll: torch.from_numpy(scale)}
+
+    return meta_data_dict
+
+def update_lora_weights(peft_model: PeftModel, omniquant_metadata_path: Union[str, Path]):
+    """
+    Read omniquant metadata safetensor, and apply LET scale to LoraLinear's lora_A and lora_B.
+    Lora_A = Lora_A*foll and Lora_B = Lora_B/prev.
+
+    :param peft_model: Peft Lora model.
+    :param omniquant_metadata_path: Path to omniquant metadata generated at the end of apply omniquant.
+    """
+    meta_data = load_file(omniquant_metadata_path)
+    meta_data_dict = _get_meta_dict(meta_data)
+
+    assert isinstance(peft_model, PeftModel), f"Expect peft_mdel class PeftModel, but got {peft_model.__class__}"
+    hf_model = peft_model.base_model.model # PeftModel -> LoraModel (base_model) -> Transformer model (model)
+    with torch.no_grad():
+        for _module_name, _let_scale_dict in meta_data_dict.items():
+            let_module = hf_model.get_submodule(_module_name)
+            if isinstance(let_module, LoraLinear):
+                prev = _let_scale_dict["prev"] if "prev" in _let_scale_dict else None
+                foll = _let_scale_dict["foll"] if "foll" in _let_scale_dict else None
+
+                if foll is not None:
+                    # Lora_A weight [lora_dim, lin_in_dim]
+                    for module in getattr(let_module, "lora_A").values():
+                        new_weight = module.weight*(foll.unsqueeze(0))
+                        module.weight.copy_(new_weight)
+
+                if prev is not None:
+                    # Lora_B weight [lin_out_dim, lora_dim]
+                    for module in getattr(let_module, "lora_B").values():
+                        new_weight = module.weight/(prev.unsqueeze(-1))
+                        module.weight.copy_(new_weight)
