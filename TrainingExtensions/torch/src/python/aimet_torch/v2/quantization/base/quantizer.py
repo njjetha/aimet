@@ -146,7 +146,11 @@ class QuantizerBase(abc.ABC, torch.nn.Module):
     def _is_initialized(self, param_name: str, current_param: torch.nn.Parameter) -> bool:
         # pylint: disable=protected-access
 
-        initial_param_weakref, initial_param_version = self._initial_parameters[param_name]
+        initial_param_weakref, initial_param_version = self._initial_parameters.get(param_name, (None, None))
+        if not initial_param_weakref:
+            # parameters created using register_parameter need not be initialized
+            return True
+
         initial_param = initial_param_weakref()
 
         if initial_param is None:

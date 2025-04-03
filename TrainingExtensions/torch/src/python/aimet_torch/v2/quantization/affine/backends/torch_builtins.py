@@ -370,7 +370,7 @@ def get_encoding_shape_with_blocks(original_encoding_shape: torch.Size, block_si
 
     return new_encoding_shape
 
-def reshape_tensor_for_blocks(tensor: torch.Tensor, encoding_shape: torch.Tensor, block_size: Optional[List]) -> \
+def reshape_tensor_for_blocks(tensor: torch.Tensor, encoding_shape: torch.Size, block_size: Optional[List]) -> \
         torch.Tensor:
     """
     Reshape tensor to account for block sizes. The new shape separates each dimension into num blocks and block size.

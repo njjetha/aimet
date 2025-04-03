@@ -52,6 +52,7 @@ import torch
 import warnings
 from torch import nn
 from torch.optim import SGD, RMSprop, Adagrad, Adam, AdamW
+
 from aimet_torch.v2.quantization.encoding_analyzer import MinMaxEncodingAnalyzer, _get_minimum_scale
 from aimet_torch.v2.quantization.affine import AffineQuantizerBase, Quantize, \
     QuantizeDequantize, GroupedBlockQuantizeDequantize
