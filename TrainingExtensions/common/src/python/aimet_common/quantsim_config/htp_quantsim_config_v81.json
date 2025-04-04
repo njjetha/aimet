@@ -158,6 +158,15 @@
     {
       "is_output_quantized": "False"
     },
+    "RMSNormalization":
+    {
+      "per_channel_quantization": "False",
+      "params": {
+        "weight": {
+          "is_symmetric": "False"
+        }
+      }
+    },
     "ScatterElements":
     {
       "is_output_quantized": "False"

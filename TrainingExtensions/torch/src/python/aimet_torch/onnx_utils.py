@@ -146,6 +146,7 @@ map_torch_types_to_onnx = {
     torchvision.ops.RoIPool: ['MaxRoiPool'],
     aimet_modules.Mean: ['ReduceMean'],
     aimet_modules.NonMaxSuppression: ['NonMaxSuppression'],
+    aimet_modules.RmsNorm: ['RMSNormalization'],
 }
 
 # Maps pytorch functional op string names to corresponding onnx types.
