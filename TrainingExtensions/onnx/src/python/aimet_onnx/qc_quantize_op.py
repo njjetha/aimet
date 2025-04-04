@@ -670,7 +670,7 @@ class QcQuantizeOp:
             assert y_zero_point.size == 1
 
         y_scale = y_scale.reshape(self._encoding_shape())
-        y_zero_point = y_zero_point.reshape(self._encoding_shape())
+        y_zero_point = y_zero_point.reshape(self._encoding_shape()).astype(np.int64)
 
         y_scale = y_scale.tolist()
         y_zero_point = None if np.all(y_zero_point == 0) else y_zero_point.tolist()
