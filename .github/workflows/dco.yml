@@ -1,0 +1,44 @@
+on:
+  workflow_call:
+
+jobs:
+  dco-check:
+    # TODO: Replace with DCO app once available.
+    # ref: https://github.com/apps/dco/
+    name: Developer Certificate of Origin(DCO) check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check each commit for DCO
+        run: |
+          # Get range of hash for PR
+          base_commit_hash="${{ github.event.pull_request.base.sha }}"
+          new_commit_hash="${{ github.event.pull_request.head.sha }}"
+
+          if [[ ${{ github.event_name  }} == "push" ]]; then
+            # Get range of hash for push
+            base_commit_hash="${{ github.event.before }}"
+            new_commit_hash="${{ github.event.after }}"
+          fi
+
+          commit_hashes=`git log --format="%H" ${base_commit_hash}..${new_commit_hash}`
+          for commit_hash in $commit_hashes; do
+            # DCO check for each commit
+            author_name=`git log --format="%an" ${commit_hash} -1`
+            author_email=`git log --format="%ae" ${commit_hash} -1`
+            commit_msg=`git log --format="%b" ${commit_hash} -1`
+            dco_pattern="Signed-off-by: ${author_name} <${author_email}>"
+
+            # Check if author is indeed Signing off commit
+            if ! echo "${commit_msg}" | grep "${dco_pattern}"; then
+              commit_msg_short=`git log --pretty=oneline ${commit_hash} -1`
+              echo "DCO check failed for ${commit_msg_short}"
+              exit 1
+            fi
+          done
+
+          echo "DCO check successful"
