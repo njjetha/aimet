@@ -1731,3 +1731,62 @@ class TestEncodingPropagation:
         assert isinstance(sim.model.seq[1], QuantizedReLU)
         assert sim.model.seq[1].input_quantizers[0] is None
         assert isinstance(sim.model.seq[1].output_quantizers[0], QuantizeDequantize)
+
+    def test_nested_input(self):
+        class MyLinear(torch.nn.Module):
+            def forward(self, xy: tuple[torch.Tensor, torch.Tensor], z: torch.Tensor):
+                x, y = xy
+                return torch.nn.functional.linear(x, y, z)
+
+
+        @QuantizationMixin.implements(MyLinear)
+        class QuantizedMyLinear(QuantizationMixin, MyLinear):
+            def __quant_init__(self):
+                super().__quant_init__()
+
+                # Declare the number of input/output quantizers
+                self.input_quantizers = torch.nn.ModuleList([None, None, None])
+                self.output_quantizers = torch.nn.ModuleList([None])
+
+            def forward(self, xy: tuple[torch.Tensor, torch.Tensor], z: torch.Tensor):
+                x, y = xy
+
+                if self.input_quantizers[0]:
+                    x = self.input_quantizers[0](x)
+
+                if self.input_quantizers[1]:
+                    y = self.input_quantizers[1](y)
+
+                if self.input_quantizers[2]:
+                    z = self.input_quantizers[2](z)
+
+                out = super().forward(xy, z)
+
+                if self.output_quantizers[0]:
+                    out = self.output_quantizers[0](out)
+
+                return out
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = MyLinear()
+
+            def forward(self, *args):
+                return self.linear(*args)
+
+        """
+        When: Leaf module takes nested tuple of tensors as input
+        Then: Quantsim shouldn't fail
+        """
+        model = Model()
+        x = torch.randn(10, 10)
+        y = torch.randn(10, 10)
+        z = torch.randn(10, 10)
+        nested_input = ((x, y), z)
+        sim = QuantizationSimModel(model, nested_input)
+
+        assert isinstance(sim.model.linear.input_quantizers[0], QuantizeDequantize)
+        assert isinstance(sim.model.linear.input_quantizers[1], QuantizeDequantize)
+        assert isinstance(sim.model.linear.input_quantizers[2], QuantizeDequantize)
+        assert isinstance(sim.model.linear.output_quantizers[0], QuantizeDequantize)
