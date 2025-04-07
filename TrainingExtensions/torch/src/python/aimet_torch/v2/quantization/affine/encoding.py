@@ -521,7 +521,7 @@ class GroupedBlockEncoding(AffineEncoding):
             encoding_dict['offset'] = \
                 [-2 ** (self.decompressed_bw - 1) for _ in encoding_dict['scale']]
             encoding_dict['enc_type'] = EncodingType.LPBQ.name
-            encoding_dict['per_block_int_scale'] = self.per_block_int_scale.flatten().tolist()
+            encoding_dict['per_block_int_scale'] = self.per_block_int_scale.to(torch.int32).flatten().tolist()
         elif encoding_version == "2.0.0.beta":
             del encoding_dict["y_scale"]
             del encoding_dict["output_dtype"]
@@ -535,7 +535,7 @@ class GroupedBlockEncoding(AffineEncoding):
                 )
 
             encoding_dict = {
-                "per_block_int_scale": self.per_block_int_scale.tolist(),
+                "per_block_int_scale": self.per_block_int_scale.to(torch.int32).tolist(),
                 "per_channel_float_scale": self.per_channel_scale.tolist(),
                 "y_zero_point": None,
                 **encoding_dict,

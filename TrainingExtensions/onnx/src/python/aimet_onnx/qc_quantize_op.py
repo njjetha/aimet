@@ -898,7 +898,7 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         per_block_int_scale, per_channel_scale = lpbq_utils.grouped_dynamic_quantize(scale,
                                                                                      self._block_grouping(),
                                                                                      decompressed_bw - compressed_bw)
-        encodings['per_block_int_scale'] = per_block_int_scale.flatten().tolist()
+        encodings['per_block_int_scale'] = per_block_int_scale.astype(np.uint32).flatten().tolist()
         encodings['scale'] = per_channel_scale.flatten().tolist()
         encodings["offset"] = [-2 ** (self.decompressed_bw - 1) for _ in encodings['scale']]
 
@@ -928,7 +928,7 @@ class GroupedBlockQuantizeDequantize(QcQuantizeOp):
         assert per_block_int_scale.ndim == per_channel_scale.ndim
 
         return {
-            "per_block_int_scale": per_block_int_scale.tolist(),
+            "per_block_int_scale": per_block_int_scale.astype(np.uint32).tolist(),
             "per_channel_float_scale": per_channel_scale.tolist(),
             "y_zero_point": None,
             **encodings,
