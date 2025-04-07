@@ -7,6 +7,7 @@ jobs:
     # ref: https://github.com/apps/dco/
     name: Developer Certificate of Origin(DCO) check
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,12 +20,6 @@ jobs:
           base_commit_hash="${{ github.event.pull_request.base.sha }}"
           new_commit_hash="${{ github.event.pull_request.head.sha }}"
 
-          if [[ ${{ github.event_name  }} == "push" ]]; then
-            # Get range of hash for push
-            base_commit_hash="${{ github.event.before }}"
-            new_commit_hash="${{ github.event.after }}"
-          fi
-
           commit_hashes=`git log --format="%H" ${base_commit_hash}..${new_commit_hash}`
           for commit_hash in $commit_hashes; do
             # DCO check for each commit
@@ -33,10 +28,11 @@ jobs:
             commit_msg=`git log --format="%b" ${commit_hash} -1`
             dco_pattern="Signed-off-by: ${author_name} <${author_email}>"
 
-            # Check if author is indeed Signing off commit
+            # Check if author is indeed signing off commit
             if ! echo "${commit_msg}" | grep "${dco_pattern}"; then
               commit_msg_short=`git log --pretty=oneline ${commit_hash} -1`
               echo "DCO check failed for ${commit_msg_short}"
+              echo "Expecting to be signed off by ${dco_pattern}"
               exit 1
             fi
           done
