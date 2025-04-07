@@ -3642,7 +3642,7 @@ class TestQuantizationSimLearnedGrid:
             assert bias_quantizer.bitwidth == 4
             assert bias_quantizer.symmetric
 
-    @pytest.mark.parametrize('hw_version', ['default', 'V66', 'V68', 'V73', 'V69', 'V75'])
+    @pytest.mark.parametrize('hw_version', [None, 'V66', 'V68', 'V73', 'V69', 'V75'])
     @pytest.mark.parametrize('quant_scheme', [QuantScheme.post_training_tf,
                                               QuantScheme.training_range_learning_with_tf_init])
     @pytest.mark.parametrize('default_output_bw', [8, 16])
@@ -3663,6 +3663,8 @@ class TestQuantizationSimLearnedGrid:
             "model_input": {},
             "model_output": {},
         }
+        if hw_version is None:
+            del quantsim_config["defaults"]["hw_version"]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = os.path.join(temp_dir, "quantsim_config.json")
@@ -3691,7 +3693,7 @@ class TestQuantizationSimLearnedGrid:
         else:
             assert not closest_output_quantizer_of_second_input.symmetric
 
-    @pytest.mark.parametrize('hw_version', ['default', 'V66', 'V68', 'V73', 'V69', 'V75'])
+    @pytest.mark.parametrize('hw_version', [None, 'V66', 'V68', 'V73', 'V69', 'V75'])
     @pytest.mark.parametrize('quant_scheme', [QuantScheme.post_training_tf,
                                               QuantScheme.training_range_learning_with_tf_init])
     @pytest.mark.parametrize('default_output_bw', [8, 16])
@@ -3721,6 +3723,8 @@ class TestQuantizationSimLearnedGrid:
             "model_input": {},
             "model_output": {},
         }
+        if hw_version is None:
+            del quantsim_config["defaults"]["hw_version"]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = os.path.join(temp_dir, "quantsim_config.json")
@@ -3750,7 +3754,7 @@ class TestQuantizationSimLearnedGrid:
         # Restore original mapping dictionary
         onnx_utils.map_torch_types_to_onnx = original_map_torch_types_to_onnx
 
-    @pytest.mark.parametrize('hw_version', ['default', 'V66', 'V68', 'V69', 'V73', 'V75'])
+    @pytest.mark.parametrize('hw_version', [None, 'V66', 'V68', 'V69', 'V73', 'V75'])
     @pytest.mark.parametrize('quant_scheme', [QuantScheme.post_training_tf,
                                               QuantScheme.training_range_learning_with_tf_init])
     @pytest.mark.parametrize("default_output_bw", [8, 16])
@@ -3779,6 +3783,8 @@ class TestQuantizationSimLearnedGrid:
             "model_input": {},
             "model_output": {},
         }
+        if hw_version is None:
+            del quantsim_config["defaults"]["hw_version"]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = os.path.join(temp_dir, "quantsim_config.json")

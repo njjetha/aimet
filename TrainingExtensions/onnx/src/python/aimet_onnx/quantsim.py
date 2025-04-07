@@ -606,7 +606,7 @@ class QuantizationSimModel:
             _, output_quantizers, param_quantizers = self.get_op_quantizers(op)
 
             if op.type == 'GroupNormalization':
-                if self._hw_version not in {'V73', 'V75', 'V79', 'V81'}:
+                if self._hw_version is None or self._hw_version in {'V66', 'V68', 'V69'}:
                     continue
                 if 'weight' in param_quantizers:
                     output_quantizer = output_quantizers[0]
@@ -629,13 +629,15 @@ class QuantizationSimModel:
                 # Below are the possible combinations for MatMul with 8/16 bitwidth:
                 # If version is V73/V75: {input0->8, input1->8 symm/asymm} {input0->16 , input1->8 symm/asymm} {input0->16, input1->16 symmetric}
                 # If version is lesser than V73: {input0->8, input1->8 symmetric} {input0->16, input1->8 symmetric}
+                if self._hw_version is None:
+                    continue
                 if self._hw_version in {'V66', 'V68', 'V69'}:
                     if target_quantizer_for_second_input is None:
                         logger.warning("The target quantizer for second input could not be found. MatMul exception rule does not apply for op: %s.", op.name)
                     else:
                         target_quantizer_for_second_input.use_symmetric_encodings = True
                         target_quantizer_for_second_input.bitwidth = 8
-                elif self._hw_version in {'V73', 'V75', 'V79', 'V81'}:
+                else:
                     if target_quantizer_for_first_input is None or target_quantizer_for_second_input is None:
                         logger.warning("The target quantizers could not be found. MatMul exception rule does not apply for op: %s.", op.name)
                     elif target_quantizer_for_second_input.bitwidth == 16:

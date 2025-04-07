@@ -492,7 +492,7 @@ class TestQuantsimConfig:
 
             version = sim.configure_quantization_ops(config_file, 8, 8, QuantizationDataType.int).\
                           _get_hw_version()
-            assert version == "default"
+            assert version is None
 
     def test_op_instance_config_1(self):
         """

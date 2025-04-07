@@ -208,11 +208,11 @@ class QuantSimConfigurator(ABC):
         """
         return self._supported_kernels
 
-    def _get_hw_version(self) -> str:
+    def _get_hw_version(self) -> Optional[str]:
         """
-        Return the hardware version from the config file if present, else return the default value
+        Return the hardware version from the config file if present, else return None
         """
-        return self._quantsim_configs[ConfigDictKeys.DEFAULTS].get(ConfigDictKeys.HW_VERSION, 'default')
+        return self._quantsim_configs[ConfigDictKeys.DEFAULTS].get(ConfigDictKeys.HW_VERSION)
 
     @abstractmethod
     def _generate_and_apply_op_instance_specific_config(self):
