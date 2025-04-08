@@ -23,6 +23,6 @@ jobs:
       - name: Push to public repository
         run: |
           cd ${INTERNAL_REPO_DIR}
-          git remote add public-origin https://${{ secrets.PUBLIC_REPO_PAT }}@github.com/quic/aimet.git
+          git remote add public-origin https://${{ secrets.AIMET_CI }}@github.com/quic/aimet.git
           git push public-origin ${{ env.INTERNAL_SRC_BRANCH }}:${{ env.PUBLIC_DST_BRANCH }}
 
