@@ -158,12 +158,6 @@ void MemoryFree(ComputationMode modeCpuGpu, void* data);
  */
 void ElementwiseMult(ComputationMode modeCpuGpu, const float* in, size_t cnt, float factor, float* out);
 
-/**
- * @brief Perform a matrix multiplication in floating point.
- */
-void GemmFloat(ComputationMode modeCpuGpu, bool transposeB, size_t m, size_t n, size_t k, const float* A,
-               const float* B, float* C);
-
 // CPU implementations...
 template <typename DTYPE>
 DTYPE GetMax_cpu(const DTYPE* data, int cnt);
@@ -226,12 +220,6 @@ template <typename DTYPE>
 std::tuple<DTYPE, DTYPE> GetMinMax_gpu(const DTYPE* data, int cnt);
 
 void ElementwiseMult_gpu(const float* in, size_t cnt, float factor, float* out);
-
-/**
- * @brief Perform matrix-matrix multiplication using cuBLAS.
- * @return True if CUDA call succeeds.
- */
-bool GemmFloat_gpu(int M, int N, int K, const float* A, const float* B, float* C, bool transposeB);
 
 void* MemoryAllocation_gpu(size_t bytes);
 

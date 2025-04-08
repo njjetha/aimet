@@ -69,7 +69,7 @@ if (ENABLE_CUDA)
 
     target_link_libraries(OnnxCppOps PUBLIC
             MoDlQuantizationCuda
-            CUDA::cublas
+            CUDA::cudart
             )
 endif (ENABLE_CUDA)
 
@@ -108,7 +108,6 @@ Python3_add_library(quant_info SHARED
 if (ENABLE_CUDA)
     target_link_libraries(quant_info PUBLIC
             MoDlQuantizationCuda
-            CUDA::cublas
             )
 endif (ENABLE_CUDA)
 

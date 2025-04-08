@@ -188,40 +188,6 @@ void ElementwiseMult(ComputationMode modeCpuGpu, const float* in, size_t cnt, fl
     }
 }
 
-void GemmFloat(ComputationMode modeCpuGpu, bool transposeB, size_t m, size_t n, size_t k, const float* A,
-               const float* B, float* C)
-{
-    switch (modeCpuGpu)
-    {
-    case COMP_MODE_CPU:
-        (void) modeCpuGpu;
-        (void) transposeB;
-        (void) m;
-        (void) n;
-        (void) k;
-        (void) A;
-        (void) B;
-        (void) C;
-        throw runtime_error("CPU mode not implemented yet.");
-    case COMP_MODE_GPU:
-    {
-#ifdef GPU_QUANTIZATION_ENABLED
-        bool result = GemmFloat_gpu(m, n, k, A, B, C, transposeB);
-        if (!result)
-        {
-            throw runtime_error("CUDA GEMM failed.");
-        }
-#else
-        throw runtime_error("Not compiled for GPU mode.");
-#endif
-    }
-    break;
-    default:
-        throw runtime_error("Unknown computation mode.");
-        break;
-    }
-}
-
 template <typename DTYPE>
 void InitializePdf(PDF& pdf, DTYPE min_val, DTYPE max_val, bool signed_vals)
 {

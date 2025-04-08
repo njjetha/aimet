@@ -51,8 +51,8 @@ jobs:
         if: matrix.VER_CUDA
         run: |
           . /etc/profile.d/conda.sh
-          CUBLAS_DIR=$(python3 -c 'import sysconfig ; from pathlib import Path; print(Path(sysconfig.get_config_var("prefix"), "lib"))')
-          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
+          CUDART_DIR=$(python3 -c 'import sysconfig ; from pathlib import Path; print(Path(sysconfig.get_config_var("prefix"), "lib"))')
+          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUDART_DIR -name '*cudart.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
           set -x
           echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
       - name: "Exclude Tensorflow libraries from dependencies for manylinux"
@@ -60,9 +60,7 @@ jobs:
         run: |
           . /etc/profile.d/conda.sh
           TF_DIR=$(python3 -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
-          CUBLAS_DIR=$(python3 -c 'import tensorflow as tf; print(f"{tf.sysconfig.get_lib()}/../../../../lib")')
           MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $TF_DIR -name '*.so*' | xargs -r patchelf --print-soname | xargs -r printf --  '--exclude %s ')"
-          MANYLINUX_EXCLUDE_LIBS="$MANYLINUX_EXCLUDE_LIBS $(find $CUBLAS_DIR -name '*blas.so*' | xargs -r patchelf --print-soname | xargs -r printf -- '--exclude %s ')"
           set -x
           echo "MANYLINUX_EXCLUDE_LIBS=$MANYLINUX_EXCLUDE_LIBS" >> $GITHUB_ENV
       - name: "Build AIMET wheel package"

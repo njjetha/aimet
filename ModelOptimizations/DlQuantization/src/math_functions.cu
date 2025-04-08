@@ -36,7 +36,6 @@
 //
 //==============================================================================
 
-#include <cublas_v2.h>
 #include <limits>
 #include <thrust/device_vector.h>
 #include <thrust/extrema.h>
@@ -109,21 +108,6 @@ __global__ void ElementwiseMult_kernel(const float* in, size_t cnt, float factor
 void ElementwiseMult_gpu(const float* in, size_t cnt, float factor, float* out)
 {
     ElementwiseMult_kernel<<<CUDA_NUM_BLOCKS(cnt), CUDA_NUM_THREADS>>>(in, cnt, factor, out);
-}
-
-bool GemmFloat_gpu(int M, int N, int K, const float* A, const float* B, float* C, bool transposeB)
-{
-    cublasHandle_t handle;
-    bool success             = (CUBLAS_STATUS_SUCCESS == cublasCreate(&handle));
-    const float alpha        = 1;
-    const float beta         = 0;
-    cublasOperation_t transB = !transposeB ? CUBLAS_OP_N : CUBLAS_OP_T;
-    int ldb                  = !transposeB ? N : K;
-    // Note that cuBLAS uses column major order, whereas C uses row major order.
-    success &=
-        (CUBLAS_STATUS_SUCCESS == cublasSgemm(handle, transB, CUBLAS_OP_N, N, M, K, &alpha, B, ldb, A, K, &beta, C, N));
-    // cudaDeviceSynchronize();
-    return success;
 }
 
 void* MemoryAllocation_gpu(size_t bytes)

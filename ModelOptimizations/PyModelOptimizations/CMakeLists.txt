@@ -51,7 +51,6 @@ target_link_libraries(PyModelOptimizations PUBLIC
 if (ENABLE_CUDA)
     target_link_libraries(PyModelOptimizations PUBLIC
             MoDlQuantizationCuda
-            CUDA::cublas
             )
 endif (ENABLE_CUDA)
 
