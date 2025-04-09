@@ -1139,11 +1139,6 @@ class TestQuantizationSimStaticGrad:
         assert sim.model.mul.input_quantizers[0].enabled
         assert not sim.model.mul.input_quantizers[1].enabled
 
-        assert not sim.model.add1.input_quantizers[0].is_const
-        assert sim.model.add1.input_quantizers[1].is_const
-        assert sim.model.add2.input_quantizers[0].is_const
-        assert not sim.model.add2.input_quantizers[1].is_const
-
         # save encodings
         input_names = ['a', 'b', 'c']
 

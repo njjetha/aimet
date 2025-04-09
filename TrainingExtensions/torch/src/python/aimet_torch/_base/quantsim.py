@@ -43,7 +43,6 @@ import copy
 from collections import OrderedDict, defaultdict
 import json
 import warnings
-import numpy as np
 import pickle
 import contextlib
 from typing import (
@@ -77,7 +76,6 @@ from aimet_common import quantsim
 
 from aimet_torch import torchscript_utils, utils, onnx_utils
 from aimet_torch.meta.connectedgraph import ConnectedGraph, Op
-from aimet_torch.quantsim_config.builder import LazyQuantizeWrapper
 from aimet_torch.quantsim_config.quantsim_config import QuantSimConfigurator
 from aimet_torch._base.nn.modules.custom import MatMul, Cast
 from aimet_torch.onnx_utils import (
@@ -347,7 +345,6 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
 
         # Add quantization layers
         self._add_quantization_wrappers(self.model, num_inout_tensors, default_data_type)
-        self._set_tensor_quantizers_for_consts(inout_tensor_shapes)
 
         # Disable bias quantization
         self.exclude_param_from_quantization("bias")
@@ -388,33 +385,6 @@ class _QuantizationSimModelBase(_QuantizationSimModelInterface):
     @abstractmethod
     def _add_quantization_wrappers(self, module, num_inout_tensors, default_data_type: QuantizationDataType):
         ...
-
-    def _set_tensor_quantizers_for_consts(self, inout_tensor_shape_dict: Dict):
-        """
-        Identify and set is_const for tensor quantizers which correspond to constant inputs in the model.
-        """
-
-        if self.connected_graph is None:
-            return
-
-        for qmodule in self.qmodules():
-            if not isinstance(qmodule, (_QuantizedModuleProtocol, LazyQuantizeWrapper)):
-                continue
-
-            # Only handling QcQuantWrappers and not QcQuantizeRecurrents
-            # pylint: disable=protected-access
-            conn_graph_op = self.connected_graph._module_to_op_dict.get(qmodule.get_original_module())
-            if conn_graph_op is None:
-                continue
-
-            input_tensor_shape_list = inout_tensor_shape_dict.get(qmodule.get_original_module())
-
-            for idx, (input_quantizer, inp) in enumerate(zip(qmodule.input_quantizers, conn_graph_op.inputs)):
-                input_quantizer.is_const = inp.is_const
-                input_quantizer.is_parm = inp.is_parm
-                input_quantizer.is_singleton = (input_tensor_shape_list is not None \
-                                                and isinstance(input_tensor_shape_list[0][idx], tuple) \
-                                                and np.prod(input_tensor_shape_list[0][idx]) == 1)
 
     def exclude_param_from_quantization(self, param_name_to_exclude: str):
         """

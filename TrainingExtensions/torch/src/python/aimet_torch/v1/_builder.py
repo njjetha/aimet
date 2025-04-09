@@ -74,7 +74,6 @@ class _V1LazyQuantizer(LazyQuantizer):
         quantizer.is_unsigned_symmetric = self.is_unsigned_symmetric
         quantizer.use_unsigned_symmetric = self.use_unsigned_symmetric
         quantizer.use_strict_symmetric = self.use_strict_symmetric
-        quantizer.is_const = self.is_const
 
 
 class _V1LazyQuantizeWrapper(LazyQuantizeWrapper):

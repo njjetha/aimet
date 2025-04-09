@@ -176,9 +176,6 @@ class LazyQuantizer(ABC):
         self.bitwidth = bitwidth
         self.enabled = enabled_by_default
         self.data_type = data_type
-        self.is_const = False
-        self.is_parm = False
-        self.is_singleton = False
         self._encoding_min_max_fixed_vals = None
         self.input_tensor_shape = input_shape # None indicates unknown
         self.channel_axis = ch_axis

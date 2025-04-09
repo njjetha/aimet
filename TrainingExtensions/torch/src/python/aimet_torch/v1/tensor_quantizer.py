@@ -98,7 +98,6 @@ class TensorQuantizer:
         self.enabled = enabled_by_default
         self.data_type = data_type
         # If tensor quantizer corresponds to a constant, mark this as true.
-        self.is_const = False
         self._encoding_min_max_fixed_vals = None
         self._is_encoding_frozen = False
 
@@ -1315,7 +1314,6 @@ def initialize_learned_grid_quantizer_attributes(new_quantizer: LearnedGridTenso
     #   during QAT 2.0 range learning
     new_quantizer.is_unsigned_symmetric = False
     new_quantizer.encoding_min_max_fixed_vals = old_quantizer.encoding_min_max_fixed_vals
-    new_quantizer.is_const = old_quantizer.is_const
 
     if new_quantizer.data_type == QuantizationDataType.float or new_quantizer.bitwidth == 32:
         new_quantizer.encoding = None
