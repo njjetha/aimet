@@ -76,6 +76,7 @@ endif (ENABLE_CUDA)
 if (SKBUILD)
     set_target_properties(OnnxCppOps PROPERTIES
         OUTPUT_NAME "aimet_onnxrt_ops"
+        INSTALL_RPATH "\$ORIGIN/../nvidia/cuda_runtime/lib"
         )
 
     install(TARGETS OnnxCppOps
