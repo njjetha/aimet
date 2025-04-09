@@ -191,7 +191,6 @@ if (ENABLE_TORCH)
     set_torch_cmake_prefix_path()
     check_torch_cxx_abi_compatibility()
     update_torch_cuda_arch_list()
-
     find_package(Torch REQUIRED)
 endif()
 
@@ -199,7 +198,7 @@ if (ENABLE_ONNX)
     set_onnx_version()
     set_onnxruntime_variables()
     set_torch_cmake_prefix_path()
-
+    update_torch_cuda_arch_list()
 endif()
 
 if (ENABLE_TENSORFLOW)
