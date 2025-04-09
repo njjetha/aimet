@@ -7,14 +7,17 @@ jobs:
     # ref: https://github.com/apps/dco/
     name: Developer Certificate of Origin(DCO) check
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
     steps:
+      - name: No DCO check for push event
+        if: ${{ github.event_name == 'push' }}
+        run: echo "No DCO check for push event"
       - name: Checkout code
+        if: ${{ github.event_name == 'pull_request' }}
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Check each commit for DCO
+        if: ${{ github.event_name == 'pull_request' }}
         run: |
           # Get range of hash for PR
           base_commit_hash="${{ github.event.pull_request.base.sha }}"
