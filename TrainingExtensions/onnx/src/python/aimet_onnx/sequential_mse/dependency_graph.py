@@ -38,143 +38,383 @@
 
 """ Dependency Graph implementation """
 
+from collections import defaultdict, deque
+from typing import Union, List, Optional, Iterable, Dict, Tuple
+from dataclasses import dataclass, field
 import numpy as np
+import onnx
+from onnxruntime.quantization.onnx_model import ONNXModel
+from aimet_common.utils import AimetLogger
+from aimet_onnx.meta.connectedgraph import ConnectedGraph, WEIGHT_INDEX
+from aimet_onnx.utils import create_input_dict, ParamUtils
+from aimet_onnx.meta.operations import Op
 
+# The following modules with weights are supported
+SUPPORTED_MODULES = ("Conv", "Gemm", "MatMul")
+
+_logger = AimetLogger.get_area_logger(AimetLogger.LogAreas.SeqMse)
+
+
+@dataclass
 class DependencyNode:
     """
     Class for node of dependency graph
     """
-    def __init__(self, op_name, op_output_names, op_input_names, op_type):
-        """
-        Initializes the DependencyNode object
+    cg_op: Op
+    op_output_names: List[str]
+    op_input_names: List[str]
+    inward_nodes: List['DependencyNode'] = field(default_factory=list)
+    outward_nodes: List['DependencyNode'] = field(default_factory=list)
+    out_degree: int = 0
+    in_degree: int = 0
 
-        :param op_name: name of the op
-        :param op_output_names: output names of the op
-        :param op_input_names: input names of the op
-        :param op_type: type (Conv/Gemm/MatMul/Add) of the op
-        """
-
-        self.op_name = op_name
-        self.op_output_names = op_output_names # Check
-        self.op_input_names = op_input_names
-        self.inward_nodes = []
-        self.outward_nodes = []
-        self.outdegree = 0
-        self.op_type = op_type
-        self.indegree = 0
 
 class DependencyGraph:
     """
-    Dependency Graph APIs
+    The Dependency Graph is designed to cache intermediate inputs in memory for SUPPORTED_MODULES,
+     allowing these intermediate inputs to be passed to child nodes to obtain the intermediate outputs.
+
+    Flow:
+        1. Iterate over each Op in ConnectedGraph
+        2. If Op is in SUPPORTED_MODULES or Op contains at least one model input(s)
+            2a. Create DependencyNode corresponding to Op in ConnectedGraph
+            2b. Link the DependencyNode with adjacent nodes
+            2c. Update the reference count of DependencyNode's inputs
+                - which decides when to remove intermediate inputs from memory when no longer needed.
+        3. Populate model inputs for starting ops.
+
+    Methods:
+        get_topologically_sorted_nodes(self): Get the topologically sorted SUPPORTED_MODULES.
+        get_subgraph_inp_out_names(self, dependency_node: DependencyNode): Get the subgraph's input and output names to collect the inputs.
     """
-    def __init__(self):
+    def __init__(self, model: Union[onnx.ModelProto, ONNXModel], data_loader: Iterable, num_batches: int):
         """
-        Intializes the object of the Dependency Graph
+        Initializes the object of the Dependency Graph
+
+        :param model: FP32 model
+        :param data_loader: DataLoader object
+        :param num_batches: Number of batches to iterate over
         """
-        self.starting_ops = []
-        self.node_by_name = {}
-        self.float_data = {}
-        self.sim_data = {}
-        self.ref_cnt_for_float_data = {}
-        self.ref_cnt_for_sim_data = {}
+        self.model = model
+        if not isinstance(model, ONNXModel):
+            self.model = ONNXModel(model)
+        self.conn_graph = ConnectedGraph(self.model)
 
-    def add_node(self, op_name, op_output_names, op_input_names, op_type, dependent_on_supported_module):
+        self.starting_ops = [] # Tracks nodes with zero in-degree (starting ops)
+        self._name_to_node = {} # Tracks a node name to the dependency node itself
+        self._sim_data = {} # Store data from the Quantsim model in memory
+        self._ref_cnt_for_sim_data = defaultdict(int) # Reference count to decide when to remove intermediate Quantsim data from memory
+
+        # Tracks a cg op name to the names of cg ops it depends on
+        self._op_name_to_dependency_names = defaultdict(list)
+        for op in self.conn_graph.ordered_ops:
+            self._op_name_to_dependency_names[op.name] = []
+
+        # Tracks onnx op names with at least one model graph input(s)
+        self._op_names_with_model_inputs = self._fill_op_names_with_model_inputs()
+
+        # Tracks the cg op name to the number of incoming edges to the op.
+        self._in_degree_map = self._fill_in_degree_map(self.conn_graph)
+
+        for start_op in self.conn_graph.starting_ops:
+            self._fill_dependency_graph(start_op)
+
+        self._populate_data_for_starting_ops(data_loader, num_batches)
+
+    def get_topologically_sorted_nodes(self):
         """
-        Insert the dependency node in the graph
+        Get topologically sorted nodes.
 
-        :param op_name: name of the op
-        :param op_output_names: output names of the op
-        :param op_input_names: input names of the op
-        :param op_type: type (Conv/Gemm/MatMul/Add) of the op
-        :param dependent_on_supported_module: nodes on which this node is dependent on (inward nodes)
+        - The in_degree dictionary keeps track of the number of incoming edges for each node.
+        - Nodes with zero in-degree are added to the queue.
+        - Nodes are processed in BFS order, and their children's in-degrees are updated.
+
+        :return: List of nodes.
         """
+        def _populate_in_degree(dep_node: DependencyNode, in_degree: dict):
+            """
+            Helper function to populate in_degree dictionary
 
-        dependency_node = DependencyNode(op_name, op_output_names, op_input_names, op_type)
+            :param dep_node: DependencyNode
+            :param in_degree: Dictionary of in_degree for each node
+            """
+            stack = [dep_node]
+            while stack:
+                current_node = stack.pop()
+                for child_node in current_node.outward_nodes:
+                    if child_node.cg_op.name not in in_degree:
+                        in_degree[child_node.cg_op.name] = child_node.in_degree
+                        stack.append(child_node)
 
-        for input_name in op_input_names:
-            self.float_data[input_name] = np.array([])
-            self.sim_data[input_name] = np.array([])
-            if input_name in self.ref_cnt_for_float_data:
-                self.ref_cnt_for_float_data[input_name] += 1
-                self.ref_cnt_for_sim_data[input_name] += 1
-            else:
-                self.ref_cnt_for_float_data[input_name] = 1
-                self.ref_cnt_for_sim_data[input_name] = 1
+        def _top_sort_helper(queue, sorted_order):
+            """
+            Helper function for topologically sorted nodes
+            """
+            while queue:
+                level, dep_node = queue.popleft()
+                sorted_order[level].append(dep_node)
+                _logger.debug(f"Adding {dep_node.cg_op.name} to sorted_order at level {level}")
+                next_level = level + 1
 
-        self.node_by_name[op_name] = dependency_node
+                # Decrease the in-degree for children nodes
+                for child_node in dep_node.outward_nodes:
+                    in_degree[child_node.cg_op.name] -= 1
+                    if in_degree[child_node.cg_op.name] == 0:
+                        queue.append((next_level, child_node))
 
-        dependency_node.indegree = len(dependent_on_supported_module)
+        # Populate in-degrees of all nodes
+        in_degree = {}
+        for dep_node in self.starting_ops:
+            assert dep_node.in_degree == 0
+            in_degree[dep_node.cg_op.name] = dep_node.in_degree
+        for dep_node in self.starting_ops:
+            _populate_in_degree(dep_node, in_degree)
 
-        if dependency_node.indegree == 0:
-            self.starting_ops.append(dependency_node)
+        sorted_order = defaultdict(list)
+        level = 0
+        queue = deque()
 
-        for parent_dependency_node_name in dependent_on_supported_module:
-            parent_dependency_node =  self.node_by_name[parent_dependency_node_name]
-            dependency_node.inward_nodes.append(parent_dependency_node)
-            parent_dependency_node.outward_nodes.append(dependency_node)
-            parent_dependency_node.outdegree += 1
+        # Initialize the queue with nodes having zero in-degree
+        for dep_node in self.starting_ops:
+            assert dep_node.in_degree == 0
+            queue.append((level, dep_node))
 
-    def get_float_data(self, dependency_node):
+        _top_sort_helper(queue, sorted_order)
+
+        return sorted_order
+
+    def get_subgraph_inp_out_names(self, dep_nodes: List[DependencyNode]) -> Tuple[List[str], List[str]]:
         """
-        :param dependency_node: Corresponding dependency node
-        :return: returns the float data of the input tensor
+        To gather input for the dependency nodes, retrieve the subgraph's input and output names.
+
+        The subgraph input names should correspond to the parent dependency node input(s),
+        while the subgraph output names should correspond to the dependency node's input(s).
+
+        :param dep_nodes: List of dependency nodes at same level
+        :return: Subgraph's input and output names.
         """
+        input_names = set()
+        output_names = set()
 
-        float_data_for_dependency_node = {}
+        for dep_node in dep_nodes:
+            for inward_node in dep_node.inward_nodes:
+                input_names.update(inward_node.op_input_names)
 
-        for input_name in dependency_node.op_input_names:
-            float_data_for_dependency_node[input_name] = self.float_data[input_name]
-        return float_data_for_dependency_node
+        model_inputs = [node.name for node in self.model.model.graph.input]
 
-    def get_sim_data(self, dependency_node):
+        for dep_node in dep_nodes:
+            for name in dep_node.op_input_names:
+                if name not in model_inputs:
+                    output_names.update([name])
+
+        return list(input_names), list(output_names)
+
+    def dependency_node_inputs(self, dep_nodes: List[DependencyNode]) -> Dict[str, np.ndarray]:
         """
-        :param dependency_node: Corresponding dependency node
+        For given dependency nodes at given level, return inputs by iterating the parent dependency nodes.
+
+        :param dep_nodes: List of dependency nodes at same level
+        :return: float inputs and sim inputs
+        """
+        sim_inputs = {}
+        for dep_node in dep_nodes:
+            for inward_node in dep_node.inward_nodes:
+                sim_inputs.update(self.get_sim_data([inward_node]))
+
+        return sim_inputs
+
+    def get_sim_data(self, dep_nodes: List[DependencyNode]) -> Dict[str, np.ndarray]:
+        """
+        :param dep_nodes: Corresponding dependency node
         :return: returns the sim data of the input tensor
         """
+        sim_data = {}
 
-        sim_data_for_dependency_node = {}
+        for dep_node in dep_nodes:
+            for input_name in dep_node.op_input_names:
+                sim_data[input_name] = self._sim_data[input_name]
 
-        for input_name in dependency_node.op_input_names:
-            sim_data_for_dependency_node[input_name] = self.sim_data[input_name]
+        return sim_data
 
-        return sim_data_for_dependency_node
-
-    def update_float_data(self, names, data):
-        """
-        Updates the float values of the corresponding names
-
-        :param names: name for which the value needs to updated
-        :param data:  value
-        """
-
-        for i, name in enumerate(names):
-            self.float_data[name] = data[i]
-
-    def update_sim_data(self, names, data):
+    def update_sim_data(self, names: List[str], data: List[List[np.ndarray]]):
         """
         Updates the sim values of the corresponding names
 
         :param names: name for which the value needs to updated
         :param data:  value
         """
-
+        assert len(names) == len(data)
         for i, name in enumerate(names):
-            self.sim_data[name] = data[i]
+            self._sim_data[name] = data[i]
 
-    def dec_ref_count(self, dependency_node):
+    def dec_ref_count(self, dependency_node: DependencyNode):
         """
         Decreases the reference count for the float and sim data
 
         :param dependency_node: Corresponding dependency node
         """
-
         for input_name in dependency_node.op_input_names:
+            self._ref_cnt_for_sim_data[input_name] -= 1
+            if self._ref_cnt_for_sim_data[input_name] == 0:
+                del self._sim_data[input_name]
+                _logger.debug(f"Deleted: {input_name}")
 
-            self.ref_cnt_for_float_data[input_name] -= 1
-            self.ref_cnt_for_sim_data[input_name] -= 1
+    @staticmethod
+    def get_param_name(dep_node: DependencyNode) -> str:
+        """
+        Get the name of a parameter in the dependency node
 
-            if self.ref_cnt_for_float_data[input_name] == 0:
-                self.float_data[input_name] = {}
+        :param dep_node: dependency node
+        :return: parameter name
+        """
+        assert dep_node.cg_op.type in SUPPORTED_MODULES
+        name = None
+        for param_name, (_, param_type) in dep_node.cg_op.parameters.items():
+            if param_type == "weight":
+                name = param_name
+        assert name is not None
+        return name
 
-            if self.ref_cnt_for_sim_data[input_name] == 0:
-                self.sim_data[input_name] = {}
+    def get_param_value(self, dep_node: DependencyNode) -> np.ndarray:
+        """
+        Get the numpy data corresponding to the dependency node.
+        :param dep_node: dependency node
+        :return: parameter numpy array
+        """
+        assert dep_node.cg_op.type in SUPPORTED_MODULES
+        tensor_proto = ParamUtils.get_param(self.model.model, dep_node.cg_op.get_module(), WEIGHT_INDEX)
+        assert tensor_proto is not None
+        tensor = onnx.numpy_helper.to_array(tensor_proto)
+        return tensor
+
+    def _populate_data_for_starting_ops(self, data_loader: Iterable, num_batches: int):
+        """
+        Initializes float_data and sim_data dictionaries for model input(s) using data loader and number of batches.
+
+        :param data_loader: DataLoader object
+        :param num_batches: Number of batches to iterate over
+        """
+        model_inputs = [node.name for node in self.conn_graph.model.graph.input]
+        data = {model_input: [] for model_input in model_inputs}
+
+        for i, batch in enumerate(data_loader):
+            if i >= num_batches:
+                break
+            batch_dict = create_input_dict(self.conn_graph.model, batch)
+            for model_input in model_inputs:
+                if model_input not in batch_dict.keys():
+                    raise ValueError(
+                        f"All inputs to the graph must be present in the dataloader. {model_input} is missing in the dataloader")
+                data[model_input].append(np.array(batch_dict[model_input]))
+
+        for (input_name, data_value) in data.items():
+            self.update_sim_data([input_name], [data_value])
+
+    def _add_dependency_node(self, cg_op: Op, dependent_node_names: Optional[List[str]]):
+        """
+        - Insert the dependency node in the graph
+        - Link the node with adjacent nodes
+        - Update the reference count of dependency_node's inputs
+
+        :param cg_op: Connected graph op.
+        :param dependent_node_names: nodes that this node depends on. (inward nodes)
+        """
+        op_output_names = [out.name for out in cg_op.outputs]
+        op_input_names = [inp.name for inp in cg_op.inputs]
+        op_input_names = [name for name in op_input_names if not ParamUtils.get_param_by_name(self.model.model, name)]
+        dep_node = DependencyNode(cg_op, op_output_names, op_input_names)
+        dep_node.in_degree = len(dependent_node_names)
+        if dep_node.in_degree == 0:
+            self.starting_ops.append(dep_node)
+
+        self._name_to_node[cg_op.name] = dep_node
+
+        # Link the node with adjacent nodes
+        for name in dependent_node_names:
+            parent_dep_node = self._name_to_node[name]
+            dep_node.inward_nodes.append(parent_dep_node)
+            parent_dep_node.outward_nodes.append(dep_node)
+            parent_dep_node.out_degree += 1
+
+        # Update the reference count of dependency_node's inputs
+        self._update_input_ref_count(dep_node)
+
+    def _fill_op_names_with_model_inputs(self) -> List[str]:
+        """
+        Fill the input op names dict with ops having at least one graph input
+        """
+        graph_inputs = [graph_inp.name for graph_inp in self.conn_graph.model.graph.input]
+
+        op_names_with_model_input = [
+            node.name for node in self.model.nodes()
+            if any(input_name in graph_inputs for input_name in node.input)
+        ]
+
+        return op_names_with_model_input
+
+    @staticmethod
+    def _fill_in_degree_map(conn_graph: ConnectedGraph) -> Dict[str, int]:
+        """
+        Initializes the in-degree dictionary which keeps track of the number of incoming edges for each node.
+        """
+        in_degree_map = {}
+        for op in conn_graph.ordered_ops:
+            in_degree_map[op.name] = len(op.input_ops)
+        return in_degree_map
+
+    def _fill_dependency_graph(self, src_op: Op):
+        """
+        Fill dependency graph by traversing connected graph ops using BFS.
+
+        NOTE:
+         - _op_name_to_dependency_names tracks a node name to the names of nodes it depends on
+         - Add dependency node only if op is of type SUPPORTED_MODULES or has at least one input as model graph input(s)
+
+        1) Checks if we can insert the dependency node in dependency graph using the module type
+        2) Update the _op_name_to_dependency_names of the child op based on the parent op type.
+
+        :param src_op: Current Op
+        """
+        is_op_supported = False
+
+        op = src_op.get_module()
+        if op and (self.is_supported_op(src_op) or src_op.name in self._op_names_with_model_inputs):
+            is_op_supported = True
+            dependent_op_names = self._op_name_to_dependency_names[src_op.name]
+            self._add_dependency_node(src_op, dependent_op_names)
+            _logger.debug(f"Added {src_op.name} to dependency graph with dependent_op_names: {len(dependent_op_names)}")
+
+        # If src_op is part of SUPPORTED_MODULES or has at least one input as a model input, include its name in _op_name_to_dependency_names.
+        # Otherwise, include the names of the dependencies of parent_op in _op_name_to_dependency_names.
+        for child_op in src_op.output_ops:
+            parent_dependencies = [src_op.name] if is_op_supported else self._op_name_to_dependency_names[src_op.name]
+            self._op_name_to_dependency_names[child_op.name].extend(parent_dependencies)
+            self._op_name_to_dependency_names[child_op.name] = list(set(self._op_name_to_dependency_names[child_op.name]))
+
+            self._in_degree_map[child_op.name] -= 1
+            if self._in_degree_map[child_op.name] == 0:
+                self._fill_dependency_graph(child_op)
+
+    def is_supported_op(self, cg_op: Op) -> bool:
+        """
+        Checks if the node is supported depending on the type
+
+        :param cg_op: Corresponding node proto
+        :return: True, if the module is supported
+        """
+        if cg_op.type not in SUPPORTED_MODULES:
+            return False
+        if len(cg_op.inputs) < 1:
+            return False
+        tensor_proto = ParamUtils.get_param(self.model.model, cg_op.get_module(), WEIGHT_INDEX)
+        return tensor_proto is not None
+
+    def _update_input_ref_count(self, dependency_node: DependencyNode):
+        """
+        Updates the input reference count for the given dependency node.
+
+        :param dependency_node: Dependency node
+        """
+        for input_name in dependency_node.op_input_names:
+            self._sim_data[input_name] = np.array([])
+            self._ref_cnt_for_sim_data[input_name] += 1

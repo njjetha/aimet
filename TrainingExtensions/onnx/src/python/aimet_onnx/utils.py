@@ -35,12 +35,14 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 """ Utility functions for ONNX """
+
 import copy
 import itertools
 from typing import Dict, List, Union, Tuple
 import os
 import pickle
 import numpy as np
+import torch
 import onnx
 from onnx import helper, numpy_helper, mapping
 
@@ -489,7 +491,7 @@ def create_input_dict(model: ModelProto, input_batch: Union[Dict, np.ndarray, Li
     input_names = [input.name for input in model.graph.input]
 
     # single input
-    if isinstance(input_batch, np.ndarray):
+    if isinstance(input_batch, (np.ndarray, torch.Tensor)):
         input_batch_list = [input_batch]
 
     # list of multiple inputs

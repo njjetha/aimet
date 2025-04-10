@@ -46,6 +46,7 @@ import onnx
 import torch.nn.functional as F
 from torch import nn as nn
 from torchvision.ops import roi_align
+from torchvision import models
 import numpy as np
 import torch
 from torch.nn.modules.instancenorm import _InstanceNorm
@@ -1116,7 +1117,7 @@ def multi_input_model(opset_version=_DEFAULT_OPSET_VERSION):
                           export_params=True,  # store the trained parameter weights inside the model file
                           opset_version=opset_version,  # the ONNX version to export the model to
                           do_constant_folding=True,  # whether to execute constant folding for optimization
-                          input_names=['input'],  # the model's input names
+                          input_names=['input1', 'input2'],  # the model's input names
                           output_names=['output'])
         model = ONNXModel(load_model(save_path))
     return model
@@ -1269,7 +1270,7 @@ def concat_model(opset_version=_DEFAULT_OPSET_VERSION):
                           export_params=True,  # store the trained parameter weights inside the model file
                           opset_version=opset_version,  # the ONNX version to export the model to
                           do_constant_folding=True,  # whether to execute constant folding for optimization
-                          input_names=['input'],  # the model's input names
+                          input_names=['input1', 'input2', 'input3'],  # the model's input names
                           output_names=['output'])
         model = ONNXModel(load_model(save_path))
     return model
@@ -2844,3 +2845,45 @@ def gather_concat_model():
     onnx.checker.check_model(model, True)
     return model
 
+def mobilenetv2():
+    x = torch.randn(1, 3, 32, 32, requires_grad=True)
+    model = models.MobileNetV2().eval()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        save_path = os.path.join(tmp_dir, "model_mobilenetv2.onnx")
+        torch.onnx.export(model,  # model being run
+                          x,  # model input (or a tuple for multiple inputs)
+                          save_path,
+                          training=torch.onnx.TrainingMode.PRESERVE,
+                          export_params=True,
+                          do_constant_folding=False,
+                          input_names=['input'],
+                          output_names=['output'],
+                          dynamic_axes={
+                              'input': {0: 'batch_size'},
+                              'output': {0: 'batch_size'},
+                          }
+                          )
+        model = ONNXModel(load_model(save_path))
+        return model
+
+
+def resnet18():
+    x = torch.randn(1, 3, 32, 32, requires_grad=True)
+    model = models.MobileNetV2().eval()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        save_path = os.path.join(tmp_dir, "model_resnet18.onnx")
+        torch.onnx.export(model,  # model being run
+                          x,  # model input (or a tuple for multiple inputs)
+                          save_path,
+                          training=torch.onnx.TrainingMode.PRESERVE,
+                          export_params=True,
+                          do_constant_folding=False,
+                          input_names=['input'],
+                          output_names=['output'],
+                          dynamic_axes={
+                              'input': {0: 'batch_size'},
+                              'output': {0: 'batch_size'},
+                          }
+                          )
+        model = ONNXModel(load_model(save_path))
+        return model
