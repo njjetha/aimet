@@ -135,6 +135,12 @@
             "level": "INFO",
             "handlers": ["console"],
             "propagate": false
-        }
+        },
+
+        "AdaScale": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": false
+         }
     }
 }

@@ -379,3 +379,13 @@ def flatten_list(container):
     if len(container) == 1:
         return container
     return container[:1] + flatten_list(container[1:])
+
+def default_forward_fn(model, inputs):
+    """
+    Default forward function.
+    :param model: pytorch model
+    :param inputs: model inputs
+    """
+    if isinstance(inputs, torch.Tensor):
+        inputs = [inputs]
+    return model(*inputs)

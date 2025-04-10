@@ -54,7 +54,7 @@ class AdaScaleQuantizeDequantize(QuantizeDequantize):
     s2: torch.nn.Parameter
     s3: torch.nn.Parameter
 
-    def __init__(self, qdq: QuantizeDequantize, weight_shape: tuple):
+    def __init__(self, qdq: QuantizeDequantize, weight_shape: torch.Size):
         """
         Creates the AdaScale QDQ object. This quantizer should be substituted in place of Linear weight qdq object
 
@@ -78,6 +78,8 @@ class AdaScaleQuantizeDequantize(QuantizeDequantize):
             self.register_parameter('s3', torch.nn.Parameter(torch.zeros(self.shape)))
 
         self.set_range(qdq.min, qdq.max)
+        self.min.requires_grad = False
+        self.max.requires_grad = False
 
     def get_adascale_trainable_parameters(self):
         """Helper to query all the trainable parameters of AdaScale QDQ"""

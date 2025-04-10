@@ -149,6 +149,8 @@ class AimetLogger(metaclass=SingletonType):
         LayerOutputs = 'LayerOutputs'
         QuantAnalyzer = 'QuantAnalyzer'
         SeqMse = 'SeqMse'
+        AdaScale = 'AdaScale'
+
 
     def __init__(self):
         self._logger = logging.getLogger()

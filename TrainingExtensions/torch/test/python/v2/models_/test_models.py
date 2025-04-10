@@ -1366,3 +1366,29 @@ class InnerLinear(nn.Module):
         x = self.in_linear1(inp)
         x = self.linear_modlist[0](x)
         return x
+
+class ModelWithLinears(nn.Module):
+    def __init__(self):
+        super(ModelWithLinears, self).__init__()
+
+        self.fc1 = nn.Linear(64, 32)
+        self.relu1 = nn.ReLU()
+        self.dropout = nn.Dropout()
+        self.fc2 = nn.Linear(32, 64)
+
+    def forward(self, x):
+        x = self.relu1(self.fc1(x))
+        x = self.dropout(x)
+        return self.fc2(x)
+
+class ModelWithConsecutiveLinearBlocks(torch.nn.Module):
+    def __init__(self):
+        super(ModelWithConsecutiveLinearBlocks, self).__init__()
+        self.linear_blocks = torch.nn.ModuleList(ModelWithLinears() for _ in range(5))
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        for linear_block in self.linear_blocks:
+            x = linear_block(x)
+        x = self.softmax(x)
+        return x
