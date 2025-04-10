@@ -41,6 +41,9 @@
 # see https://packaging.python.org/en/latest/guides/packaging-namespace-packages
 __path__ = __import__('pkgutil').extend_path(__path__, __name__)
 
+from aimet_common import _deps
+__version__ = _deps.__version__
+
 from .quantsim import QuantizationSimModel
 from . import nn
 

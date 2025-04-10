@@ -34,8 +34,20 @@
 #
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
-# pylint: disable=missing-module-docstring
-from aimet_common import _deps
-__version__ = _deps.__version__
+import importlib.metadata
+import pytest
+import aimet_onnx
 
-from .quantsim import QuantizationSimModel
+
+try:
+    metadata = importlib.metadata.metadata("aimet-onnx")
+except importlib.metadata.PackageNotFoundError:
+    pytest.skip(allow_module_level=True)
+
+
+def test_metadata():
+    """
+    When: import aimet_onnx
+    Then: __version__ string should be consistent with what is specified in package metadata
+    """
+    assert aimet_onnx.__version__ == metadata["version"]

@@ -16,6 +16,7 @@ import shlex
 import subprocess
 
 __all__ = ["dynamic_metadata"]
+_PKG_ROOT = pathlib.Path(os.path.dirname(__file__), "..", "..", "..").absolute().resolve()
 
 
 def __dir__() -> list[str]:
@@ -75,9 +76,9 @@ def get_aimet_dependencies() -> list[str]:
     aimet_variant = get_aimet_variant()
 
     if aimet_variant in ("torch-gpu", "onnx-cpu", "tf-torch-cpu"):
-        deps_path = pathlib.Path("packaging", "dependencies", "fast-release", aimet_variant)
+        deps_path = pathlib.Path(_PKG_ROOT, "packaging", "dependencies", "fast-release", aimet_variant)
     else:
-        deps_path = pathlib.Path("packaging", "dependencies", aimet_variant)
+        deps_path = pathlib.Path(_PKG_ROOT, "packaging", "dependencies", aimet_variant)
 
     deps_files = [*deps_path.glob("reqs_pip_*.txt")]
     print(f"CMAKE_ARGS='{os.environ.get('CMAKE_ARGS', '')}'")
@@ -104,7 +105,7 @@ def get_cuda_version():
 
 
 def get_version() -> str:
-    version = pathlib.Path("packaging", "version.txt").read_text(encoding="utf8").splitlines()[0]
+    version = pathlib.Path(_PKG_ROOT, "packaging", "version.txt").read_text(encoding="utf8").splitlines()[0]
     cuda_version = get_cuda_version()
 
     # For PyPi releases, just return the version without appending the variant string

@@ -35,11 +35,27 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=all
-import os
-import sys
 import glob
+import importlib.util
+import os
+import pathlib
 import subprocess
+import sys
 import sysconfig
+
+
+_PKG_ROOT = pathlib.Path(os.path.dirname(__file__), "..", "..", "..", "..", "..").absolute().resolve()
+
+def import_from_path(module_name, file_path):
+    # From https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+aimet_packaging_plugin = import_from_path(module_name="aimet",
+                                          file_path=_PKG_ROOT / "./packaging/plugins/local/aimet.py")
 
 
 def _get_min_glibc_version(build_dir):
@@ -62,6 +78,7 @@ def _get_min_glibc_version(build_dir):
 
     return sorted(glibc_ver_list, key=lambda x: list(map(int, x.split('.'))), reverse=True)[0]
 
+
 def main(output_dir, build_dir):
     try:
         import torch
@@ -79,6 +96,7 @@ def main(output_dir, build_dir):
         ]
 
     content = [
+        f"__version__ = '{aimet_packaging_plugin.get_version()}'",
         f"python_abi = '{sysconfig.get_config_var('SOABI')}'",
         "torch = "      + (f"'{torch.__version__}'" if torch else "None"),
         "min_glibc = "  + (f"'{min_glibc_version}'" if min_glibc_version else "None"),
