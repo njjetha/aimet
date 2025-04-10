@@ -176,11 +176,9 @@ class FloatQuantizeDequantize(QuantizerBase): # pylint: disable=abstract-method
             self.register_buffer('maxval', None)
 
     def get_extra_state(self):
-        extra_state_dict = {}
+        extra_state_dict = super().get_extra_state()
         extra_state_dict['exponent_bits'] = torch.tensor(self.exponent_bits)
         extra_state_dict['mantissa_bits'] = torch.tensor(self.mantissa_bits)
-        super_extra_state = super().get_extra_state()
-        extra_state_dict.update(super_extra_state)
         return extra_state_dict
 
     def set_extra_state(self, state):

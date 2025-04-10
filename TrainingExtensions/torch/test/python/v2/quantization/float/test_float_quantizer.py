@@ -38,6 +38,7 @@
 import pytest
 
 import random
+import tempfile
 import torch
 import numpy as np
 import warnings
@@ -189,3 +190,12 @@ def test_extreme_values_warning():
             assert issubclass(w[-1].category, UserWarning)
             assert "Extreme values" in str(w[-1].message) 
 
+
+def test_onnx_export():
+    """
+    When: torch.onnx.export a quantizer
+    Then: export shouldn't throw error
+    """
+    qdq = FloatQuantizeDequantize(dtype=torch.float16)
+    with tempfile.TemporaryFile() as f:
+        torch.onnx.export(qdq, torch.randn(10, 10), f)
