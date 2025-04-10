@@ -1093,7 +1093,7 @@ class QuantizationSimModel:
         if onnx_opset_version < 10:
             raise RuntimeError(
                 "onnx::QuantizeLinear and DequantizeLinear are only supported in opset >= 10; "
-                f"got {onnx_opset_version}"
+                f"got opset={onnx_opset_version}"
             )
 
         if onnx_opset_version < 13 and any(
@@ -1104,7 +1104,7 @@ class QuantizationSimModel:
         ):
             raise RuntimeError(
                 "onnx::QuantizeLinear and DequantizeLinear only supports "
-                f"per-channel quantization in opset >= 13; got {onnx_opset_version}"
+                f"per-channel quantization in opset >= 13; got opset={onnx_opset_version}"
             )
 
         if onnx_opset_version < 21 and any(
@@ -1115,7 +1115,17 @@ class QuantizationSimModel:
         ):
             raise RuntimeError(
                 "onnx::QuantizeLinear and DequantizeLinear only supports "
-                f"blockwise quantization in opset >= 21; got {onnx_opset_version}"
+                f"blockwise quantization in opset >= 21; got opset={onnx_opset_version}"
+            )
+
+        if onnx_opset_version < 21 and any(
+            qtzr.data_type == QuantizationDataType.int and
+            8 < qtzr.bitwidth <= 16
+            for qtzr in self.qc_quantize_op_dict.values()
+        ):
+            raise RuntimeError(
+                "onnx::QuantizeLinear and DequantizeLinear only supports "
+                f"int16/uint16 quantization in opset >= 21; got opset={onnx_opset_version}"
             )
 
         model_copy = onnx.ModelProto()
