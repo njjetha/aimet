@@ -329,7 +329,7 @@ def _get_minimum_scale(num_steps: int) -> float:
       | int32 |    2.33e-12   | (note: float64.eps = 2.22e-16)
 
     """
-    fp32_eps = np.finfo(np.float32).eps
+    fp32_eps = float(np.finfo(np.float32).eps)
 
     _MINIMUM_RANGE_TO_REPRESENT = (-0.005, 0.005)
     _min, _max = _MINIMUM_RANGE_TO_REPRESENT
