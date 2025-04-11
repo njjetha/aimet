@@ -206,3 +206,15 @@ jobs:
       - name: Delete temp docker image
         if: needs.docker-tag.outputs.tag != 'latest'
         run: curl -k -H "Authorization:Bearer ${{ secrets.DOCKER_CREDENTIALS }}" -X DELETE "https://${{ vars.DOCKER_REGISTRY }}/v2/${{ vars.DOCKER_IMAGE }}-${{ matrix.id }}/manifests/${{ needs.docker-tag.outputs.tag }}" || true
+
+  notify_failure:
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    name: Notify failure on slack
+    runs-on: ubuntu-latest
+    steps:
+    - uses: slackapi/slack-github-action@v1.25.0
+      with:
+        channel-id: C0898PQVA31
+        slack-message: "AIMET Nightly Failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}"
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFIER_TOKEN }}
