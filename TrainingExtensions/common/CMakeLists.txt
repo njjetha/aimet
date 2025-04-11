@@ -66,13 +66,13 @@ if(SKBUILD)
 install(DIRECTORY ${CMAKE_BINARY_DIR}/artifacts/aimet_common/
         DESTINATION aimet_common
         FILES_MATCHING
-        PATTERN "_deps.py"
+        PATTERN "_version.py"
       )
 else()
 install(DIRECTORY ${CMAKE_BINARY_DIR}/artifacts/aimet_common/
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/aimet_common
         FILES_MATCHING
-        PATTERN "_deps.py"
+        PATTERN "_version.py"
       )
 endif()
 

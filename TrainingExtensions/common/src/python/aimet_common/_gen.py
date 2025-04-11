@@ -87,7 +87,7 @@ def main(output_dir, build_dir):
 
     min_glibc_version = _get_min_glibc_version(build_dir)
 
-    _template = os.path.join(os.path.dirname(__file__), "_deps.pyi")
+    _template = os.path.join(os.path.dirname(__file__), "_version.pyi")
 
     with open(_template) as f:
         copyright_string = [
@@ -106,7 +106,7 @@ def main(output_dir, build_dir):
     ]
 
     os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "_deps.py"), "w") as f:
+    with open(os.path.join(output_dir, "_version.py"), "w") as f:
         f.write('\n'.join(copyright_string + content))
 
 if __name__ == "__main__":

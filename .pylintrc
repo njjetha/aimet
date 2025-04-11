@@ -18,7 +18,7 @@ ignore=CVS,
        export.py,
        pass_calibration_data.py,
        prepare_model.py,
-       _deps.py,
+       _version.py,
        libaimet_tf_ops
 
 # Add files or directories matching the regex patterns to the blacklist. The

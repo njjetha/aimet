@@ -46,7 +46,7 @@ import sysconfig
 import platform
 
 import torch as _torch
-from aimet_common import _deps
+from aimet_common import _version
 
 
 def _is_torch_compatible(current: str, required: str):
@@ -97,23 +97,23 @@ def _check_requirements():
     #   * arch = x86_64 | aarch64 | ...
     #   * platform = linux-gnu
     python_abi = sysconfig.get_config_var('SOABI')
-    if python_abi != _deps.python_abi:
-        reasons.append(f"  * Python: {_deps.python_abi} (currently you have {python_abi})")
+    if python_abi != _version.python_abi:
+        reasons.append(f"  * Python: {_version.python_abi} (currently you have {python_abi})")
 
     # Check PyTorch ABI.
-    if not _is_torch_compatible(_torch.__version__, _deps.torch):
-        major, minor, patch = _deps.torch.split(".")
+    if not _is_torch_compatible(_torch.__version__, _version.torch):
+        major, minor, patch = _version.torch.split(".")
         _, cuda = patch.split("+")
         reasons.append(f"  * torch=={major}.{minor}.*+{cuda} "
                        f"(currently you have torch=={_torch.__version__})")
 
     # Check glibc version
-    if _deps.min_glibc and sys.platform == "linux":
+    if _version.min_glibc and sys.platform == "linux":
         libc, libc_version = platform.libc_ver()
         if libc != "glibc":
             reasons.append(f"  * libc==glibc (currently you have {libc})")
-        elif not _is_glibc_compatible(libc_version, _deps.min_glibc):
-            reasons.append(f"  * glibc>={_deps.min_glibc} "
+        elif not _is_glibc_compatible(libc_version, _version.min_glibc):
+            reasons.append(f"  * glibc>={_version.min_glibc} "
                            f"(currently you have glibc=={libc_version})")
 
     if reasons:

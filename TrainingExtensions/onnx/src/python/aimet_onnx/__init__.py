@@ -35,7 +35,7 @@
 #  @@-COPYRIGHT-END-@@
 # =============================================================================
 # pylint: disable=missing-module-docstring
-from aimet_common import _deps
-__version__ = _deps.__version__
+from aimet_common import _version
+__version__ = _version.__version__
 
 from .quantsim import QuantizationSimModel
